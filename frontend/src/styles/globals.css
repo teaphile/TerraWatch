@@ -1,0 +1,325 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Theme variables ───────────────────────────────────── */
+:root {
+  --bg: #0D1117;
+  --text-primary: #F0F6FC;
+  --text-secondary: #9CA3AF;
+  --text-muted: #6B7280;
+  --surface-card: #161B22;
+  --border-color: #30363D;
+  --sidebar-width: 360px;
+}
+.light {
+  --bg: #FFFFFF;
+  --text-primary: #1E293B;
+  --text-secondary: #475569;
+  --text-muted: #64748B;
+  --surface-card: #FFFFFF;
+  --border-color: #E2E8F0;
+}
+
+/* ── Responsive breakpoint variables ─────────────────── */
+@media (max-width: 640px) {
+  :root { --sidebar-width: 100vw; }
+}
+@media (min-width: 641px) and (max-width: 1024px) {
+  :root { --sidebar-width: 320px; }
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: var(--bg);
+  color: var(--text-primary);
+  transition: background-color 0.3s, color 0.3s;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Focus-visible outlines for accessibility */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid #3B82F6;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ── Touch & mobile optimizations ──────────────────────── */
+@media (max-width: 640px) {
+  button, a, [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  .sidebar-icon-btn {
+    min-height: 40px;
+    min-width: 40px;
+  }
+}
+
+/* ── Safe area insets for notched devices ───────────────── */
+@supports (padding: env(safe-area-inset-top)) {
+  .safe-top { padding-top: env(safe-area-inset-top); }
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+  .safe-left { padding-left: env(safe-area-inset-left); }
+  .safe-right { padding-right: env(safe-area-inset-right); }
+}
+
+/* ── Scrollbar (dark) ──────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #161B22; }
+.light ::-webkit-scrollbar-track { background: #F1F5F9; }
+::-webkit-scrollbar-thumb { background: #30363D; border-radius: 3px; }
+.light ::-webkit-scrollbar-thumb { background: #CBD5E1; }
+::-webkit-scrollbar-thumb:hover { background: #484F58; }
+
+/* Hide scrollbar on mobile for cleaner look */
+@media (max-width: 640px) {
+  ::-webkit-scrollbar { width: 3px; }
+}
+
+/* ── Leaflet dark theme ────────────────────────────────── */
+.leaflet-container {
+  background: #0D1117 !important;
+  font-family: 'Inter', system-ui, sans-serif !important;
+}
+.light .leaflet-container { background: #F8FAFC !important; }
+.leaflet-control-zoom a {
+  background-color: #161B22 !important;
+  color: #F0F6FC !important;
+  border-color: #30363D !important;
+  width: 36px !important;
+  height: 36px !important;
+  line-height: 36px !important;
+  font-size: 18px !important;
+}
+.light .leaflet-control-zoom a {
+  background-color: #FFFFFF !important;
+  color: #1E293B !important;
+  border-color: #E2E8F0 !important;
+}
+.leaflet-control-zoom a:hover { background-color: #21262D !important; }
+.light .leaflet-control-zoom a:hover { background-color: #F1F5F9 !important; }
+
+@media (max-width: 640px) {
+  .leaflet-control-zoom a {
+    width: 40px !important;
+    height: 40px !important;
+    line-height: 40px !important;
+    font-size: 20px !important;
+  }
+  .leaflet-control-zoom { margin-bottom: 70px !important; }
+}
+
+.leaflet-control-attribution {
+  background-color: rgba(13, 17, 23, 0.8) !important;
+  color: #8B949E !important;
+  font-size: 10px !important;
+}
+.light .leaflet-control-attribution {
+  background-color: rgba(255, 255, 255, 0.9) !important;
+  color: #64748B !important;
+}
+.leaflet-control-attribution a { color: #58A6FF !important; }
+.leaflet-popup-content-wrapper {
+  background-color: #161B22 !important;
+  color: #F0F6FC !important;
+  border-radius: 12px !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5) !important;
+  max-width: min(300px, 80vw) !important;
+}
+.light .leaflet-popup-content-wrapper {
+  background-color: #FFFFFF !important;
+  color: #1E293B !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.12) !important;
+}
+.leaflet-popup-content { margin: 12px 16px !important; }
+.leaflet-popup-tip { background-color: #161B22 !important; }
+.light .leaflet-popup-tip { background-color: #FFFFFF !important; }
+.leaflet-popup-close-button { color: #8B949E !important; font-size: 20px !important; }
+
+/* ── Animations ────────────────────────────────────────── */
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.7; stroke-width: 1; }
+  50% { opacity: 1; stroke-width: 3; }
+}
+.pulse-marker { animation: pulse-glow 2s ease-in-out infinite; }
+
+.risk-gradient {
+  background: linear-gradient(90deg, #3FB950 0%, #D29922 50%, #F85149 100%);
+}
+
+@keyframes shimmer {
+  0% { background-position: -200px 0; }
+  100% { background-position: calc(200px + 100%) 0; }
+}
+.shimmer {
+  background: linear-gradient(90deg, #161B22 0%, #21262D 50%, #161B22 100%);
+  background-size: 200px 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-in { animation: fadeIn 0.3s ease-out; }
+
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+.slide-up { animation: slideUp 0.35s cubic-bezier(0.32, 0.72, 0, 1); }
+
+@keyframes slideDown {
+  from { transform: translateY(0); }
+  to { transform: translateY(100%); }
+}
+.slide-down { animation: slideDown 0.25s ease-in; }
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+.scale-in { animation: scaleIn 0.2s ease-out; }
+
+/* ── Mobile bottom drawer ──────────────────────────────── */
+.mobile-drawer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 2000;
+  max-height: 85vh;
+  border-radius: 16px 16px 0 0;
+  overflow: hidden;
+  touch-action: pan-y;
+}
+
+.mobile-drawer-handle {
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--text-muted);
+  margin: 8px auto 4px;
+  opacity: 0.5;
+}
+
+/* ── Mobile bottom nav ─────────────────────────────────── */
+.mobile-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 1500;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  padding: 4px 0;
+  padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px));
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* ── Glass card utility ────────────────────────────────── */
+.glass-card {
+  background: rgba(22, 27, 34, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(48, 54, 61, 0.6);
+  border-radius: 12px;
+}
+.light .glass-card {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+}
+
+/* ── Recharts responsive ───────────────────────────────── */
+.recharts-wrapper {
+  font-size: 11px !important;
+}
+@media (max-width: 640px) {
+  .recharts-wrapper {
+    font-size: 9px !important;
+  }
+  .recharts-cartesian-axis-tick-value {
+    font-size: 9px !important;
+  }
+}
+
+/* ── Coordinate display chip ───────────────────────────── */
+.coord-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  background: rgba(45, 106, 79, 0.15);
+  border: 1px solid rgba(45, 106, 79, 0.3);
+  color: #52B788;
+}
+
+/* ── Status indicators ─────────────────────────────────── */
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.status-dot.live {
+  background: #3FB950;
+  box-shadow: 0 0 8px rgba(63, 185, 80, 0.5);
+}
+.status-dot.offline {
+  background: #F85149;
+}
+
+/* ── Print styles ──────────────────────────────────────── */
+@media print {
+  .no-print { display: none !important; }
+  body { background: white !important; color: black !important; }
+  .leaflet-container { break-inside: avoid; }
+}
+
+/* ── Landscape phone optimization ──────────────────────── */
+@media (max-height: 500px) and (orientation: landscape) {
+  .mobile-nav { display: none; }
+  .mobile-drawer { max-height: 70vh; }
+}
+
+/* ── Custom scrollbar ──────────────────────────────────── */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-color) transparent;
+}
+.scrollbar-thin::-webkit-scrollbar {
+  width: 5px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: var(--border-color);
+  border-radius: 4px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-muted);
+}
