@@ -67,7 +67,7 @@ TerraWatch is a full-stack geospatial platform that combines soil health analysi
 ### Interactive Map
 
 - **Dark/light basemaps** — CARTO Dark Matter (default) and CARTO Voyager (light) tile layers, plus terrain overlay toggle.
-- **Real-time earthquake markers** — Circle markers with radius proportional to `magnitude^1.8` and color coded by significance (green → yellow → orange → red → darkred). Pulse-glow animation on new events (opacity-based, not transform-based, to avoid Leaflet SVG conflicts).
+- **Real-time earthquake markers** — Circle markers with radius proportional to magnitude and color coded by significance (green → yellow → orange → red → darkred). Pulse-glow animation on new events.
 - **Click-to-analyze** — Click any point on the map to kick off soil analysis + risk assessment for those coordinates. Results stream into the sidebar panels.
 - **Animated fly-to** — When coordinates are entered via the header search bar, the map smoothly pans and zooms to the location.
 - **Layer controls** — Toggle visibility for earthquakes, soil health overlay, risk zones, and terrain. Each layer has a legend color chip.
@@ -102,8 +102,8 @@ TerraWatch is a full-stack geospatial platform that combines soil health analysi
 ### Responsive Design
 
 - **Mobile** — Bottom navigation bar with slide-up drawer for sidebar content. Touch-friendly tap targets (min 44px). Map controls repositioned. Search overlay.
-- **Tablet** — Side panel with adaptive width. Scrollable content areas with `max-h-[calc(100vh-140px)]`.
-- **Desktop** — Full sidebar (400px), overlay panels, keyboard shortcuts. Focus-visible rings on all interactive elements.
+- **Tablet** — Side panel with adaptive width. Scrollable content areas.
+- **Desktop** — Full sidebar, overlay panels, and keyboard shortcuts. Focus-visible rings on all interactive elements.
 - **Print styles** — Clean output with hidden navigation elements.
 
 ---
@@ -151,10 +151,10 @@ graph TB
     Services -->|httpx async| ISRIC
     WS_Server --> Services
 
-    style Client fill:#1a1a2e,stroke:#30363d,color:#f0f6fc
-    style Server fill:#0d1117,stroke:#30363d,color:#f0f6fc
-    style Data fill:#161b22,stroke:#30363d,color:#f0f6fc
-    style External fill:#0d1117,stroke:#30363d,color:#f0f6fc
+    style Client fill:#1a1a2e,stroke:#30363d,color:#e6edf3
+    style Server fill:#161b22,stroke:#30363d,color:#e6edf3
+    style Data fill:#21262d,stroke:#30363d,color:#e6edf3
+    style External fill:#161b22,stroke:#30363d,color:#e6edf3
 ```
 
 **Request flow for a map click:**
@@ -263,32 +263,32 @@ Navigate to `http://localhost:5173`. Click anywhere on the map to analyze soil a
 
 ## Docker Deployment
 
-### docker-compose (development / self-hosting)
+### docker-compose (self-hosting)
 
 ```bash
 cd terrawatch
 docker compose up --build
 ```
 
-This starts two containers:
+This starts two containers on your local machine:
 
-| Service | URL | Description |
-|---------|-----|-------------|
-| `backend` | `http://localhost:8000` | FastAPI server with health checks |
-| `frontend` | `http://localhost:80` | nginx serving the React SPA |
+| Service | Port | Description |
+|---------|------|-------------|
+| `backend` | 8000 | FastAPI API server with health checks |
+| `frontend` | 80 | nginx serving the built React SPA |
 
-The backend uses a named Docker volume (`backend-data`) mounted at `/app/data` to persist the SQLite database across restarts.
+The backend uses a named Docker volume (`backend-data`) to persist the SQLite database across container restarts.
 
 ### Single-container build (Hugging Face Spaces)
 
-The root `Dockerfile` creates a single container that builds the React frontend, copies the output into the backend's `static/` directory, and serves everything from uvicorn on port 7860:
+The root `Dockerfile` creates a unified container that builds the React frontend, bundles it with the backend, and serves everything on a single port:
 
 ```bash
 docker build -t terrawatch .
 docker run -p 7860:7860 terrawatch
 ```
 
-This is the configuration used for the live demo on Hugging Face Spaces. The container runs as a non-root user (`appuser`, uid 1000).
+This is the configuration used for the [live demo](https://huggingface.co/spaces/teaphile/terrawatch). The container runs as a non-root user for security.
 
 ---
 
@@ -352,12 +352,6 @@ All endpoints are prefixed with `/api/v1`. Query parameters `lat` (latitude, -90
 |----------|----------|-------------|
 | WS | `/ws/alerts` | Real-time alert stream. Pushes JSON alert objects for M4.0+ earthquakes and other triggered hazards. |
 
-### Frontend SPA
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/{path}` | Catch-all route serving the React SPA (only when frontend static files are present in the build) |
-
 ---
 
 ## Frontend Components
@@ -418,7 +412,7 @@ The React app is organized into four component groups:
 | Component | Responsibility |
 |-----------|---------------|
 | `Header` | App title, live UTC clock (1-second interval), coordinate search input (parses `lat, lon`), geolocation button (browser Geolocation API). |
-| `Sidebar` | Desktop: slide-out panel (400px). Mobile: bottom nav bar with 5 tabs + slide-up drawer. 7 navigation tabs: Dashboard, Soil, Risk, Recommendations, Earthquakes, Weather, Export. Fade-in transitions on content swap. |
+| `Sidebar` | Desktop: slide-out panel. Mobile: bottom nav bar + slide-up drawer. Tabs: Dashboard, Soil, Risk, Recommendations, Earthquakes, Weather, Export. Fade-in transitions on content swap. |
 | `Loading` | Spinner with contextual message. |
 | `ErrorBoundary` | React error boundary with fallback UI and retry button. |
 
@@ -467,8 +461,8 @@ All configuration is managed via environment variables (loaded from `.env` file 
 | `HOST` | `0.0.0.0` | Server bind address |
 | `PORT` | `8000` | Server bind port (overridden to 7860 on HF Spaces) |
 | `DATABASE_URL` | `sqlite+aiosqlite:///./terrawatch.db` | Async database connection string |
-| `CORS_ORIGINS` | `http://localhost:3000,`<br/>`http://localhost:5173,`<br/>`https://*.hf.space` | Comma-separated allowed origins |
-| `API_SECRET_KEY` | `terrawatch-default-secret-key-change-me` | Secret key for optional auth middleware |
+| `CORS_ORIGINS` | `localhost:3000, localhost:5173, *.hf.space` | Comma-separated allowed origins |
+| `API_SECRET_KEY` | _(auto-generated)_ | Secret key for optional auth middleware |
 | `OPENWEATHER_API_KEY` | _(empty)_ | Optional OpenWeatherMap key (fallback source) |
 | `MAPBOX_TOKEN` | _(empty)_ | Optional Mapbox token (not used by default) |
 | `OPEN_METEO_ENABLED` | `True` | Enable Open-Meteo weather integration |
@@ -594,17 +588,6 @@ python -m pytest tests/test_gis.py -v       # Geospatial utility tests
 ```
 
 Tests cover soil property prediction, risk model computations, API endpoint responses, and geospatial utility functions.
-
----
-
-## Ports Reference
-
-| Context | Port | Service |
-|---------|------|---------|
-| Backend (development / docker-compose) | 8000 | FastAPI via uvicorn |
-| Frontend (Vite dev server) | 5173 | Vite with HMR |
-| Frontend (production via nginx) | 80 | nginx serving SPA |
-| Hugging Face Spaces (single container) | 7860 | uvicorn serving API + static frontend |
 
 ---
 
