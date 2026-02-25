@@ -595,4 +595,4 @@ Tests cover soil property prediction, risk model computations, API endpoint resp
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for the full text.
 
-Copyright (c) 2026 TerraWatch AI
+Copyright (c) 2026 TerraWatch
