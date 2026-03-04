@@ -25,9 +25,11 @@ async def broadcast_alert(alert: dict) -> None:
         alert: Alert dictionary to broadcast.
     """
     message = json.dumps({"type": "alert", "data": alert})
+    # Copy the set to avoid modification during iteration
+    current_connections = _connections.copy()
     disconnected = set()
 
-    for ws in _connections:
+    for ws in current_connections:
         try:
             await ws.send_text(message)
         except Exception:

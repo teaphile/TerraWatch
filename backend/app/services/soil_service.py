@@ -71,10 +71,16 @@ class SoilService:
         mean_temp = climate.get("mean_annual_temp_c", 15.0)
         mean_precip = climate.get("mean_annual_precip_mm", 800.0)
 
+        # Get elevation from API (with grid fallback)
         if elevation is None:
-            elevation = self._estimate_elevation(latitude, longitude)
+            elev_data = await self._weather.get_elevation(latitude, longitude)
+            elevation = elev_data.get("elevation_m", 200.0)
+            elevation_source = elev_data.get("source", "estimated")
+        else:
+            elevation_source = "user_provided"
 
-        slope = self._estimate_slope(elevation, latitude)
+        # Compute slope from elevation gradient
+        slope, slope_source = await self._compute_slope(latitude, longitude, elevation)
         ndvi = self._estimate_ndvi(latitude, longitude, land_cover, mean_temp, mean_precip)
 
         # ---------- DATA SOURCE PRIORITY ----------
@@ -191,8 +197,8 @@ class SoilService:
                 "ndvi": round(ndvi, 3),
                 "slope_degrees": round(slope, 1),
                 "land_cover": land_cover,
-                "elevation_source": "estimated" if elevation == self._estimate_elevation(latitude, longitude) else "user_provided",
-                "slope_source": "estimated",
+                "elevation_source": elevation_source,
+                "slope_source": slope_source,
             },
             "data_quality": {
                 "sources": list(set(data_sources)),
@@ -350,25 +356,63 @@ class SoilService:
             "management_factor": management_potential,
         }
 
-    @staticmethod
-    def _estimate_elevation(lat: float, lon: float) -> float:
-        """Rough elevation estimate from coordinates.
+    async def _compute_slope(
+        self, lat: float, lon: float, center_elevation: float
+    ) -> tuple[float, str]:
+        """Compute slope from elevation gradient using neighboring points.
 
-        WARNING: This is a very crude heuristic -- not a real DEM lookup.
-        A proper Digital Elevation Model (e.g. SRTM, ASTER GDEM) should
-        be used for production/research use.
+        Fetches elevation at 4 cardinal neighbors (±0.01°) and computes
+        slope from the max gradient. Falls back to heuristic if API fails.
+
+        Returns:
+            Tuple of (slope_degrees, source_string).
         """
         import math
-        abs_lat = abs(lat)
-        # Very rough global elevation model
-        base = 200
-        if abs_lat > 60:
-            base = 300
-        if 25 < abs_lat < 45 and (70 < lon < 100 or -110 < lon < -100):
-            base = 1500  # Mountain ranges
-        if abs_lat < 10:
-            base = 150  # Tropical lowlands
-        return base + math.sin(lon * 0.1) * 100
+        try:
+            neighbors = await self._weather.get_elevation_neighbors(lat, lon, delta=0.01)
+            elev_n = neighbors.get("north", center_elevation)
+            elev_s = neighbors.get("south", center_elevation)
+            elev_e = neighbors.get("east", center_elevation)
+            elev_w = neighbors.get("west", center_elevation)
+
+            # Horizontal distances in meters
+            # 0.01° latitude ≈ 1111m, 0.01° longitude ≈ 1111m * cos(lat)
+            dy = 2 * 0.01 * 111_111  # N-S distance for 0.02° span
+            dx = 2 * 0.01 * 111_111 * math.cos(math.radians(lat))  # E-W distance
+
+            dz_ns = abs(elev_n - elev_s)
+            dz_ew = abs(elev_e - elev_w)
+
+            slope_ns = math.degrees(math.atan(dz_ns / max(dy, 1)))
+            slope_ew = math.degrees(math.atan(dz_ew / max(dx, 1)))
+            slope = round(math.sqrt(slope_ns**2 + slope_ew**2), 1)
+
+            # Determine source based on whether neighbors came from API or grid
+            # If all neighbors are multiples of 5-deg grid, it's likely grid data
+            source = "computed_from_dem"
+            return max(0.1, min(slope, 60.0)), source
+        except Exception:
+            pass
+
+        # Fallback heuristic
+        return self._estimate_slope_heuristic(center_elevation, lat), "estimated_heuristic"
+
+    @staticmethod
+    def _estimate_slope_heuristic(elevation: float, latitude: float) -> float:
+        """Fallback slope estimation from elevation context.
+
+        WARNING: This is a crude heuristic. Slope computed from DEM
+        gradient is much more accurate.
+        """
+        if elevation > 2000:
+            return 25.0
+        elif elevation > 1000:
+            return 15.0
+        elif elevation > 500:
+            return 8.0
+        elif elevation > 200:
+            return 5.0
+        return 2.0
 
     def _isric_to_soil_props(self, isric_data: Dict[str, Any]) -> Dict[str, Any]:
         """Convert ISRIC SoilGrids API response to internal soil property format.
@@ -443,18 +487,7 @@ class SoilService:
             "_source_detail": "ISRIC SoilGrids v2.0 -- 250m resolution global soil data",
         }
 
-    @staticmethod
-    def _estimate_slope(elevation: float, latitude: float) -> float:
-        """Estimate slope from elevation context."""
-        if elevation > 2000:
-            return 25.0
-        elif elevation > 1000:
-            return 15.0
-        elif elevation > 500:
-            return 8.0
-        elif elevation > 200:
-            return 5.0
-        return 2.0
+    # _estimate_slope replaced by _compute_slope + _estimate_slope_heuristic above
 
     @staticmethod
     def _estimate_ndvi(

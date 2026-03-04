@@ -105,33 +105,54 @@ class SatelliteService:
             return None
 
     @staticmethod
-    def _estimate_ndvi(latitude: float, longitude: float) -> Dict[str, Any]:
-        """Estimate NDVI from latitude/longitude heuristics.
+    def _estimate_ndvi(
+        latitude: float,
+        longitude: float,
+        land_cover: str = "unknown",
+    ) -> Dict[str, Any]:
+        """Estimate NDVI from land cover type and climate context.
 
-        WARNING: This is a CRUDE estimation. Values are NOT derived
-        from satellite imagery and should not be used for research.
+        Uses land cover as the primary indicator (much more meaningful
+        than latitude alone), with seasonal/climate adjustments from
+        the climate normals dataset.
         """
-        import math
-        abs_lat = abs(latitude)
-        if abs_lat < 15:
-            ndvi = 0.6  # Tropical
-        elif abs_lat < 30:
-            ndvi = 0.4  # Subtropical/arid
-        elif abs_lat < 50:
-            ndvi = 0.55  # Temperate
-        else:
-            ndvi = 0.3  # Boreal/Arctic
+        # Land-cover-based NDVI (primary factor)
+        ndvi_by_cover = {
+            "forest": 0.70, "dense_forest": 0.80,
+            "grassland": 0.45, "cropland": 0.50,
+            "shrubland": 0.35, "wetland": 0.55,
+            "bare": 0.10, "urban": 0.15, "water": -0.05,
+        }
+        base_ndvi = ndvi_by_cover.get(land_cover.lower(), 0.40)
 
-        # Small longitude variation (placeholder, NOT scientifically valid)
-        ndvi += math.sin(longitude * 0.05) * 0.05
+        # Climate adjustment from normals
+        try:
+            from app.services.weather_service import _interpolate_climate
+            climate = _interpolate_climate(latitude, longitude)
+            if climate:
+                precip = climate.get("p", 800)
+                temp = climate.get("t", 15)
+                # Wetter & warmer → greener (up to a point)
+                if precip > 1200 and temp > 15:
+                    base_ndvi *= 1.15
+                elif precip > 800 and temp > 10:
+                    base_ndvi *= 1.05
+                elif precip < 300:
+                    base_ndvi *= 0.65
+                elif precip < 500:
+                    base_ndvi *= 0.80
+        except Exception:
+            pass
+
+        ndvi = max(-0.1, min(0.95, base_ndvi))
 
         return {
-            "ndvi": round(max(0, min(1, ndvi)), 3),
+            "ndvi": round(ndvi, 3),
             "source": "estimated",
             "_warning": (
-                "NDVI is estimated from latitude-based heuristics, NOT from "
-                "real satellite imagery. Values should not be used for "
-                "research or precision agriculture."
+                f"NDVI estimated from land cover type ('{land_cover}') and "
+                "climate normals. NOT from real satellite imagery. "
+                "OpenLandMap API was unavailable."
             ),
         }
 

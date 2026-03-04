@@ -222,6 +222,7 @@ class DisasterService:
                     and soil_moisture_data.get("source") == "open-meteo"
                     and climate.get("source") == "open-meteo"
                 ),
+                "_validation_status": "unvalidated_analytical_model",
                 "note": (
                     "Risk models use analytical/heuristic methods, not trained ML. "
                     "Weights are expert-calibrated but not validated against historical "

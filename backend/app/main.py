@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -167,8 +167,8 @@ async def soil_moisture_timeseries(
 
 @app.get("/api/v1/data-quality", tags=["Data Quality"])
 async def data_quality_report(
-    lat: float = 0.0,
-    lon: float = 0.0,
+    lat: float = Query(0.0, ge=-90, le=90, description="Latitude (-90 to 90)"),
+    lon: float = Query(0.0, ge=-180, le=180, description="Longitude (-180 to 180)"),
 ) -> dict:
     """Report on data source availability and quality.
 

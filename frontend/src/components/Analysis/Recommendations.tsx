@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Sprout, ShieldCheck, TreePine, Loader2 } from 'lucide-react';
 import api from '../../services/api';
-import type { AgricultureRecommendations } from '../../types';
+import type { AgricultureRecommendations, DisasterPreparedness, RestorationRecommendations, Recommendation } from '../../types';
 
 interface RecommendationsPanelProps {
   lat: number | null;
@@ -13,8 +13,8 @@ type Tab = 'agriculture' | 'disaster' | 'restoration';
 const RecommendationsPanel: React.FC<RecommendationsPanelProps> = ({ lat, lon }) => {
   const [tab, setTab] = useState<Tab>('agriculture');
   const [agData, setAgData] = useState<AgricultureRecommendations | null>(null);
-  const [disasterData, setDisasterData] = useState<any>(null);
-  const [restorationData, setRestorationData] = useState<any>(null);
+  const [disasterData, setDisasterData] = useState<DisasterPreparedness | null>(null);
+  const [restorationData, setRestorationData] = useState<RestorationRecommendations | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -178,25 +178,26 @@ function AgricultureView({ data }: { data: AgricultureRecommendations }) {
   );
 }
 
-function GenericRecsView({ data }: { data: any }) {
+function GenericRecsView({ data }: { data: DisasterPreparedness | RestorationRecommendations }) {
   if (!data) return null;
 
   // Unwrap {status, data} wrapper if present
-  const inner = data?.data ?? data;
-  const items = Array.isArray(inner)
-    ? inner
-    : inner.recommendations || inner.items || inner.preparedness_actions || [];
+  const inner = (data as Record<string, unknown>)?.data ?? data;
+  const rawInner = inner as Record<string, unknown>;
+  const items: Recommendation[] = Array.isArray(rawInner)
+    ? rawInner
+    : (rawInner.recommendations || rawInner.items || rawInner.preparedness_actions || []) as Recommendation[];
 
   if (Array.isArray(items) && items.length > 0) {
     return (
       <div className="space-y-2">
         {/* Summary */}
-        {inner.summary && (
+        {rawInner.summary && (
           <div className="bg-primary-600/10 border border-primary-600/30 rounded-lg p-3">
-            <p className="text-xs text-text-secondary">{inner.summary}</p>
+            <p className="text-xs text-text-secondary">{rawInner.summary as string}</p>
           </div>
         )}
-        {items.map((item: any, i: number) => (
+        {items.map((item: Recommendation, i: number) => (
           <div key={i} className="bg-surface-700/30 rounded-lg p-3 border border-surface-600">
             {item.category && (
               <p className="text-xs font-medium text-primary-400 mb-1">{item.category}</p>
@@ -212,7 +213,7 @@ function GenericRecsView({ data }: { data: any }) {
               }`}>{item.priority}</span>
             )}
             <p className="text-xs text-text-secondary mt-0.5">
-              {item.description || item.recommendation || item.action || ''}
+              {item.description || ''}
             </p>
             {item.actions && Array.isArray(item.actions) && (
               <ul className="mt-1.5 space-y-0.5">
@@ -230,10 +231,10 @@ function GenericRecsView({ data }: { data: any }) {
   }
 
   // Fallback: render key-value pairs nicely
-  if (typeof inner === 'object' && inner !== null) {
+  if (typeof rawInner === 'object' && rawInner !== null) {
     return (
       <div className="space-y-2">
-        {Object.entries(inner).map(([key, val]) => (
+        {Object.entries(rawInner).map(([key, val]) => (
           <div key={key} className="bg-surface-700/30 rounded-lg p-3 border border-surface-600">
             <p className="text-xs font-medium text-primary-400 mb-1">
               {key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}

@@ -79,15 +79,16 @@ class TestWeatherFallbackTransparency:
     def test_estimated_climate_has_source_field(self):
         svc = WeatherService()
         result = svc._estimate_climate(40.0, -95.0)
-        assert result["source"] == "estimated"
+        assert result["source"] in ("estimated", "climate_normals")
         assert "_warning" in result
 
-    def test_estimated_weather_precipitation_is_zero(self):
-        """Estimated weather always returns 0 precipitation — verify this is documented."""
+    def test_estimated_weather_precipitation_uses_climate_normals(self):
+        """Estimated weather now uses climate normals — precipitation should be realistic."""
         svc = WeatherService()
         result = svc._estimate_weather(40.0, -95.0)
-        assert result["precipitation_mm"] == 0
-        assert "precipitation" in result.get("_warning", "").lower()
+        # Climate normals should give a positive precipitation estimate for US Midwest
+        assert result["precipitation_mm"] > 0
+        assert "climate normals" in result.get("_warning", "").lower()
 
 
 class TestSoilModelTransparency:

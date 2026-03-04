@@ -49,7 +49,8 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PORT=7860
 ENV DATABASE_URL=sqlite+aiosqlite:///./data/terrawatch.db
-ENV CORS_ORIGINS=*
+# Restrict CORS in production — use specific origins
+ENV CORS_ORIGINS=https://*.hf.space
 ENV LOG_LEVEL=INFO
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7860"]

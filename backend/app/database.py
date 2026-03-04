@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+from datetime import timezone
 from typing import AsyncGenerator, Optional
 
 from sqlalchemy import (
@@ -76,7 +77,7 @@ class SoilAnalysisRecord(Base):
     carbon_stock = Column(Float)
     carbon_potential = Column(Float)
 
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(timezone.utc))
 
     __table_args__ = (
         Index("idx_soil_lat_lon", "latitude", "longitude"),
@@ -105,7 +106,7 @@ class DisasterRiskRecord(Base):
     composite_risk_level = Column(String(30))
 
     details = Column(JSON)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(timezone.utc))
 
     __table_args__ = (
         Index("idx_risk_lat_lon", "latitude", "longitude"),
@@ -129,7 +130,7 @@ class EarthquakeEvent(Base):
     url = Column(String(500))
     felt = Column(Integer)
     tsunami = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(timezone.utc))
 
 
 class Alert(Base):
@@ -147,8 +148,37 @@ class Alert(Base):
     radius_km = Column(Float)
     data = Column(JSON)
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(timezone.utc))
     expires_at = Column(DateTime)
+
+
+class SoilMoistureCache(Base):
+    """Cached soil moisture readings for fallback when API is unavailable."""
+
+    __tablename__ = "soil_moisture_cache"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    latitude = Column(Float, nullable=False, index=True)
+    longitude = Column(Float, nullable=False, index=True)
+    surface = Column(Float)
+    shallow = Column(Float)
+    mid = Column(Float)
+    deep = Column(Float)
+    fetched_at = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        Index("idx_moisture_lat_lon", "latitude", "longitude"),
+    )
+
+
+class CacheEntry(Base):
+    """Disk-backed L2 cache entries for persistent caching across restarts."""
+
+    __tablename__ = "cache_entries"
+
+    key = Column(String(255), primary_key=True)
+    value = Column(Text, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
 
 
 async def init_db() -> None:

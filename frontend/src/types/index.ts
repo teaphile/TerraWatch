@@ -233,3 +233,25 @@ export interface AgricultureRecommendations {
   }>;
   summary: string;
 }
+
+export interface DisasterPreparedness {
+  recommendations: Recommendation[];
+  risk_summary: {
+    landslide: string;
+    flood: string;
+    earthquake: string;
+    wildfire: string;
+  };
+  preparedness_actions?: Recommendation[];
+  summary?: string;
+}
+
+export interface RestorationRecommendations {
+  recommendations: Recommendation[];
+  carbon_opportunity: {
+    current_stock_tonnes_ha: number;
+    potential_stock_tonnes_ha: number;
+    sequestration_rate: string;
+  };
+  summary?: string;
+}

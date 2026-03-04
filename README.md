@@ -582,20 +582,29 @@ TerraWatch is designed to be transparent about the source and quality of every d
 | Data Type | Primary Source | Fallback | How to Tell |
 |-----------|---------------|----------|-------------|
 | Soil properties | ISRIC SoilGrids API (250m) | Analytical estimation (latitude heuristics) | `soil_data_source` field |
-| Weather | Open-Meteo API (real-time) | Latitude-based estimation | `source` field = `"open-meteo"` vs `"estimated"` |
-| Soil moisture | Open-Meteo soil model | Hardcoded defaults (25-32%) | `source` field |
-| NDVI | OpenLandMap MODIS (250m) | Latitude heuristic | `source` field |
+| Weather | Open-Meteo API (real-time) | Climate normals (5° grid, IDW interpolation) | `source` field = `"open-meteo"` vs `"estimated"` |
+| Soil moisture | Open-Meteo soil model | DB cache (< 24h) → climate-based estimation | `source` field |
+| Elevation | Open-Meteo Elevation API | Static 5° grid | `elevation_source` in metadata |
+| Slope | 4-point elevation gradient | Heuristic from elevation | `slope_source` in metadata |
+| NDVI | OpenLandMap MODIS (250m) | Land-cover + climate adjustment | `source` field |
 | Earthquakes | USGS real-time feed | None (real data only) | Always real |
 | Active fires | NASA FIRMS | Empty list (requires MAP_KEY) | `source` field |
 
-### Known Limitations
+### Known Limitations & Improvements
 
-1. **No trained ML model** — The Random Forest + XGBoost soil prediction ensemble exists in code but no `soil_ensemble.joblib` model file is deployed. All soil predictions come from ISRIC SoilGrids or analytical fallback.
-2. **Elevation & slope are estimated** — No Digital Elevation Model (DEM) is integrated. Both values use crude heuristics.
-3. **Risk models are unvalidated** — Landslide, flood, fire, and liquefaction models use expert-weighted analytical methods but have not been validated against historical event inventories.
-4. **No ground truth comparison** — No accuracy metrics (RMSE, MAE, R²) are computed against observational datasets.
-5. **NDVI may be estimated** — If OpenLandMap is unavailable, NDVI is guessed from latitude.
-6. **In-memory cache** — Data does not persist across restarts (SQLite DB is used for alerts only).
+> **Recent overhaul (v2):** Many of the original limitations below have been addressed.
+> Items marked ✅ are fixed; items marked ⚠️ still apply.
+
+1. ✅ **ML training infrastructure** — A training script (`backend/ml/train_soil_model.py`) now exists to train the RF+XGBoost ensemble from ISRIC SoilGrids data. Until a trained model is deployed, the improved analytical fallback is used (with honest confidence scores and `_validation_status` flag).
+2. ✅ **Elevation & slope** — Elevation is now fetched from the Open-Meteo Elevation API (with a static 5° grid fallback). Slope is computed from a 4-point elevation gradient instead of heuristics.
+3. ⚠️ **Risk models are unvalidated** — Landslide, flood, fire, and liquefaction models use expert-weighted analytical methods. They now carry a `_validation_status: "unvalidated_analytical_model"` field. Validation against historical event inventories is planned.
+4. ⚠️ **No ground truth comparison** — Accuracy metrics are not yet computed, though test suites now verify directional correctness and plausible ranges.
+5. ✅ **NDVI estimation improved** — Fallback NDVI now uses land-cover type and climate normals instead of a crude latitude heuristic.
+6. ✅ **Cache persists across restarts** — A two-tier L1 (memory) + L2 (SQLite) cache is now used. Set `CACHE_PERSIST=false` to disable disk persistence.
+7. ✅ **Weather fallback uses climate normals** — When Open-Meteo is unavailable, a global 5° climate normals grid provides realistic temperature, precipitation, humidity, and wind estimates (no more `precipitation_mm: 0`).
+8. ✅ **Soil moisture caching** — Successful API fetches are persisted to SQLite; stale cache (< 24h) is used before falling back to climate-based estimation.
+9. ✅ **Security hardened** — `API_SECRET_KEY` auto-generates if missing (with warning), CORS origin defaults to `https://*.hf.space` instead of `*`, and all route inputs are validated with Pydantic `Query` constraints.
+10. ✅ **WebSocket broadcast race condition fixed** — Connection set is copied before iteration.
 
 ### Data Quality Endpoint
 
@@ -615,13 +624,17 @@ pip install pytest pytest-asyncio anyio httpx
 python -m pytest tests/ -v
 
 # Run specific test modules
-python -m pytest tests/test_soil.py -v      # Soil analysis tests
-python -m pytest tests/test_risk.py -v      # Risk assessment tests
-python -m pytest tests/test_api.py -v       # API integration tests
-python -m pytest tests/test_gis.py -v       # Geospatial utility tests
+python -m pytest tests/test_soil.py -v                # Soil analysis tests
+python -m pytest tests/test_risk.py -v                # Risk assessment tests
+python -m pytest tests/test_api.py -v                 # API integration tests
+python -m pytest tests/test_gis.py -v                 # Geospatial utility tests
+python -m pytest tests/test_weather_fallback.py -v    # Climate normals fallback
+python -m pytest tests/test_graceful_degradation.py -v # API failure scenarios
+python -m pytest tests/test_risk_validation.py -v     # Risk model directional checks
+python -m pytest tests/test_soil_model_accuracy.py -v # Soil prediction accuracy
 ```
 
-Tests cover soil property prediction, risk model computations, API endpoint responses, and geospatial utility functions.
+Tests cover soil property prediction, risk model computations, API endpoint responses, geospatial utility functions, weather fallback quality, graceful degradation under API failures, and soil model accuracy against known reference locations.
 
 ---
 
