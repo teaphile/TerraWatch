@@ -153,6 +153,11 @@ class WeatherService:
             "deep_9_27cm": 32.0,
             "average_pct": 28.8,
             "source": "estimated",
+            "_warning": (
+                "Soil moisture values are HARDCODED fallback defaults, "
+                "not from any real measurement or model. "
+                "Open-Meteo soil moisture API was unavailable."
+            ),
         }
 
     async def get_historical_data(
@@ -271,7 +276,12 @@ class WeatherService:
     def _estimate_weather(
         self, lat: float, lon: float
     ) -> Dict[str, Any]:
-        """Estimate weather from latitude/longitude."""
+        """Estimate weather from latitude/longitude.
+
+        WARNING: This is a CRUDE fallback when Open-Meteo API is unavailable.
+        Values are rough latitude-based estimates and should NOT be used for
+        scientific analysis or risk assessment without clear disclaimers.
+        """
         import math
         abs_lat = abs(lat)
         temp = 30 - abs_lat * 0.5
@@ -286,12 +296,21 @@ class WeatherService:
             "wind_direction_deg": 180,
             "weather_code": 0,
             "source": "estimated",
+            "_warning": (
+                "Weather data is estimated from latitude only. "
+                "Open-Meteo API was unavailable. Precipitation is set to 0, "
+                "which will underestimate flood and erosion risk."
+            ),
         }
 
     def _estimate_climate(
         self, lat: float, lon: float
     ) -> Dict[str, Any]:
-        """Estimate climate normals from latitude."""
+        """Estimate climate normals from latitude.
+
+        WARNING: This is a very rough estimate. Real climate normals
+        should come from Open-Meteo or WorldClim datasets.
+        """
         abs_lat = abs(lat)
         mean_temp = 30 - abs_lat * 0.55
         # Simple precipitation model: higher in tropics and mid-latitudes
@@ -308,6 +327,10 @@ class WeatherService:
             "mean_annual_temp_c": round(mean_temp, 1),
             "mean_annual_precip_mm": precip,
             "source": "estimated",
+            "_warning": (
+                "Climate normals estimated from latitude-based heuristics. "
+                "Open-Meteo API was unavailable."
+            ),
         }
 
     @staticmethod

@@ -2,6 +2,7 @@ import React from 'react';
 import { Leaf, Droplets, Thermometer, Scale } from 'lucide-react';
 import type { SoilAnalysis } from '../../types';
 import { SoilRadarChart, TextureDonutChart, MoistureDepthChart, ErosionFactorsChart, CarbonGaugeChart, SoilNutrientChart, HealthBreakdownChart, SoilCompositionChart } from '../Dashboard/Charts';
+import { DataQualityBanner } from '../Common';
 
 interface SoilAnalysisPanelProps {
   analysis: SoilAnalysis | null;
@@ -52,6 +53,9 @@ const SoilAnalysisPanel: React.FC<SoilAnalysisPanelProps> = ({ analysis }) => {
 
   return (
     <div className="space-y-4 overflow-y-auto max-h-[calc(100vh-140px)] pr-1 scrollbar-thin">
+      {/* Data Quality Banner */}
+      <DataQualityBanner dataQuality={analysis.data_quality} />
+
       {/* Health Score */}
       <div className={`p-4 rounded-lg border ${getHealthBg(analysis.health_index.grade)}`}>
         <div className="flex items-center justify-between">

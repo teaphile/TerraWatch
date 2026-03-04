@@ -7,7 +7,7 @@ carbon sequestration estimation, and health scoring.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
@@ -15,6 +15,7 @@ from app.models.soil_model import get_soil_model
 from app.models.erosion_model import get_erosion_model
 from app.services.cache_service import get_soil_cache
 from app.services.weather_service import get_weather_service
+from app.data.ingestion.soil_fetcher import get_soil_fetcher
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,7 @@ class SoilService:
         self._soil_model = get_soil_model()
         self._erosion_model = get_erosion_model()
         self._weather = get_weather_service()
+        self._soil_fetcher = get_soil_fetcher()
         self._cache = get_soil_cache()
 
     async def analyze(
@@ -75,17 +77,54 @@ class SoilService:
         slope = self._estimate_slope(elevation, latitude)
         ndvi = self._estimate_ndvi(latitude, longitude, land_cover, mean_temp, mean_precip)
 
-        # Predict soil properties
-        soil_props = self._soil_model.predict(
-            latitude=latitude,
-            longitude=longitude,
-            elevation=elevation,
-            slope=slope,
-            mean_temp=mean_temp,
-            mean_precip=mean_precip,
-            land_cover=land_cover,
-            ndvi=ndvi,
-        )
+        # ---------- DATA SOURCE PRIORITY ----------
+        # 1. Try ISRIC SoilGrids API (real observed/modeled data at 250m resolution)
+        # 2. Fall back to analytical estimation (heuristic pedotransfer functions)
+        data_sources: List[str] = []
+        data_warnings: List[str] = []
+
+        isric_data = await self._soil_fetcher.fetch_properties(latitude, longitude)
+        if isric_data:
+            soil_props = self._isric_to_soil_props(isric_data)
+            data_sources.append("isric_soilgrids")
+        else:
+            data_warnings.append(
+                "ISRIC SoilGrids API unavailable -- soil properties are estimated "
+                "from analytical heuristics (latitude, climate, elevation). "
+                "Accuracy is significantly lower than observational data."
+            )
+            # Predict soil properties using analytical model
+            soil_props = self._soil_model.predict(
+                latitude=latitude,
+                longitude=longitude,
+                elevation=elevation,
+                slope=slope,
+                mean_temp=mean_temp,
+                mean_precip=mean_precip,
+                land_cover=land_cover,
+                ndvi=ndvi,
+            )
+            data_sources.append(soil_props.get("_data_source", "analytical_estimation"))
+
+        # Track weather data source
+        if climate.get("source") == "open-meteo":
+            data_sources.append("open-meteo")
+        else:
+            data_sources.append("estimated_climate")
+            data_warnings.append(
+                "Climate normals estimated from latitude -- Open-Meteo API was unavailable."
+            )
+
+        if weather.get("source") == "estimated":
+            data_warnings.append(
+                "Current weather data estimated from latitude -- "
+                "Open-Meteo API was unavailable. Risk scores may be less accurate."
+            )
+
+        if soil_moisture_data.get("source") == "estimated":
+            data_warnings.append(
+                "Soil moisture data is hardcoded fallback -- not from live API."
+            )
 
         # Update moisture from actual data if available
         if soil_moisture_data.get("average_pct"):
@@ -152,6 +191,20 @@ class SoilService:
                 "ndvi": round(ndvi, 3),
                 "slope_degrees": round(slope, 1),
                 "land_cover": land_cover,
+                "elevation_source": "estimated" if elevation == self._estimate_elevation(latitude, longitude) else "user_provided",
+                "slope_source": "estimated",
+            },
+            "data_quality": {
+                "sources": list(set(data_sources)),
+                "warnings": data_warnings,
+                "soil_data_source": "isric_soilgrids" if isric_data else "analytical_estimation",
+                "weather_data_source": climate.get("source", "unknown"),
+                "soil_moisture_source": soil_moisture_data.get("source", "unknown"),
+                "is_fully_real_data": (
+                    bool(isric_data)
+                    and climate.get("source") == "open-meteo"
+                    and soil_moisture_data.get("source") == "open-meteo"
+                ),
             },
             "timestamp": self._timestamp(),
         }
@@ -167,6 +220,13 @@ class SoilService:
         Considers pH, organic carbon, structure, erosion, and nutrient status.
         """
         scores = []
+
+        # Handle both ISRIC-based and analytical-based property formats
+        def _get_value(prop_key: str, default: float = 0.0) -> float:
+            val = props.get(prop_key, {})
+            if isinstance(val, dict):
+                return val.get("value", default)
+            return float(val) if val is not None else default
 
         # pH score (optimal: 6.0-7.0)
         ph = props["ph"]["value"]
@@ -292,7 +352,12 @@ class SoilService:
 
     @staticmethod
     def _estimate_elevation(lat: float, lon: float) -> float:
-        """Rough elevation estimate from coordinates."""
+        """Rough elevation estimate from coordinates.
+
+        WARNING: This is a very crude heuristic -- not a real DEM lookup.
+        A proper Digital Elevation Model (e.g. SRTM, ASTER GDEM) should
+        be used for production/research use.
+        """
         import math
         abs_lat = abs(lat)
         # Very rough global elevation model
@@ -304,6 +369,79 @@ class SoilService:
         if abs_lat < 10:
             base = 150  # Tropical lowlands
         return base + math.sin(lon * 0.1) * 100
+
+    def _isric_to_soil_props(self, isric_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert ISRIC SoilGrids API response to internal soil property format.
+
+        ISRIC SoilGrids returns values in specific units that need conversion:
+        - phh2o: pH * 10 (e.g. 65 = pH 6.5)
+        - soc: soil organic carbon in dg/kg (decigrams per kg)
+        - nitrogen: total nitrogen in cg/kg (centigrams per kg)
+        - sand, silt, clay: g/kg (grams per kg)
+        - cec: CEC in mmol(c)/kg
+        - bdod: bulk density in cg/cm³ (centigrams per cm³)
+        """
+        from app.models.soil_model import SoilPredictionModel
+
+        model = SoilPredictionModel()
+
+        # pH (SoilGrids: pH * 10)
+        raw_ph = isric_data.get("phh2o")
+        ph = round(raw_ph / 10.0, 1) if raw_ph is not None else 6.5
+
+        # Organic carbon (SoilGrids: dg/kg → percentage: / 100)
+        raw_soc = isric_data.get("soc")
+        organic_carbon = round(raw_soc / 100.0, 2) if raw_soc is not None else 1.8
+
+        # Nitrogen (SoilGrids: cg/kg → percentage: / 1000)
+        raw_n = isric_data.get("nitrogen")
+        nitrogen = round(raw_n / 1000.0, 3) if raw_n is not None else 0.15
+
+        # Texture fractions (SoilGrids: g/kg → percentage: / 10)
+        raw_sand = isric_data.get("sand")
+        raw_silt = isric_data.get("silt")
+        raw_clay = isric_data.get("clay")
+
+        sand = round(raw_sand / 10.0, 1) if raw_sand is not None else 40.0
+        silt = round(raw_silt / 10.0, 1) if raw_silt is not None else 35.0
+        clay = round(raw_clay / 10.0, 1) if raw_clay is not None else 25.0
+
+        # Normalize to 100%
+        total = sand + silt + clay
+        if total > 0 and abs(total - 100.0) > 1.0:
+            sand = round(sand / total * 100, 1)
+            silt = round(silt / total * 100, 1)
+            clay = round(100.0 - sand - silt, 1)
+
+        texture_class = model._classify_texture(sand, silt, clay)
+
+        # CEC (SoilGrids: mmol(c)/kg → cmol(+)/kg: / 10)
+        raw_cec = isric_data.get("cec")
+        cec = round(raw_cec / 10.0, 1) if raw_cec is not None else 15.0
+
+        # Bulk density (SoilGrids: cg/cm³ → g/cm³: / 100)
+        raw_bdod = isric_data.get("bdod")
+        bulk_density = round(raw_bdod / 100.0, 2) if raw_bdod is not None else 1.35
+
+        # Confidence is higher for ISRIC data (peer-reviewed global model)
+        confidence = 0.80
+
+        return {
+            "ph": {"value": ph, "confidence": confidence, "category": model._ph_category(ph)},
+            "organic_carbon_pct": {"value": organic_carbon, "confidence": confidence},
+            "nitrogen_pct": {"value": nitrogen, "confidence": confidence - 0.05},
+            "moisture_pct": {"value": 30.0, "confidence": 0.5},  # ISRIC doesn't provide moisture; will be overridden
+            "texture": {
+                "sand_pct": sand,
+                "silt_pct": silt,
+                "clay_pct": clay,
+                "classification": texture_class,
+            },
+            "bulk_density_gcm3": bulk_density,
+            "cec_cmolkg": cec,
+            "_data_source": "isric_soilgrids",
+            "_source_detail": "ISRIC SoilGrids v2.0 -- 250m resolution global soil data",
+        }
 
     @staticmethod
     def _estimate_slope(elevation: float, latitude: float) -> float:

@@ -104,14 +104,24 @@ class SoilPredictionModel:
             Dictionary with predicted soil properties and confidence scores.
         """
         if self.is_trained:
-            return self._predict_with_model(
+            result = self._predict_with_model(
                 latitude, longitude, elevation, slope,
                 mean_temp, mean_precip, land_cover, ndvi
             )
-        return self._predict_analytical(
+            result["_data_source"] = "trained_model"
+            result["_source_detail"] = "Random Forest + XGBoost ensemble trained on SoilGrids data"
+            return result
+        result = self._predict_analytical(
             latitude, longitude, elevation, slope,
             mean_temp, mean_precip, land_cover, ndvi
         )
+        result["_data_source"] = "analytical_estimation"
+        result["_source_detail"] = (
+            "Pedotransfer functions and empirical climate-soil relationships. "
+            "No trained ML model available -- values are estimated from latitude, "
+            "elevation, climate, and land cover heuristics. Accuracy is limited."
+        )
+        return result
 
     def _predict_analytical(
         self,
@@ -200,8 +210,9 @@ class SoilPredictionModel:
         )
         moisture = round(float(moisture + ndvi * 10), 1)
 
-        # Confidence scores (lower for analytical estimation)
-        base_confidence = 0.65
+        # Confidence scores (LOWER for analytical estimation to reflect uncertainty)
+        # These are heuristic-based estimates, NOT validated ML predictions
+        base_confidence = 0.45  # Reduced from 0.65 to be honest about estimation quality
         lat_conf = max(0, 1 - abs_lat / 90 * 0.2)
         confidence = round(base_confidence * lat_conf, 2)
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import JSONResponse
 
 from app.services.disaster_service import get_disaster_service
 from app.data.ingestion.earthquake_fetcher import get_earthquake_fetcher
@@ -14,16 +15,31 @@ router = APIRouter(prefix="/risk", tags=["Risk Assessment"])
 async def assess_all_risks(
     lat: float = Query(..., ge=-90, le=90, description="Latitude"),
     lon: float = Query(..., ge=-180, le=180, description="Longitude"),
-) -> dict:
+) -> JSONResponse:
     """Get comprehensive multi-hazard risk assessment.
 
     Evaluates landslide, flood, liquefaction, and wildfire risks
     for the specified location using real-time weather data.
+
+    Response includes a `data_quality` object with source tracking.
     """
     try:
         service = get_disaster_service()
         result = await service.assess_all_risks(latitude=lat, longitude=lon)
-        return {"status": "success", "data": result}
+
+        data_quality = result.get("data_quality", {})
+        warnings = data_quality.get("warnings", [])
+
+        response = JSONResponse(
+            content={"status": "success", "data": result}
+        )
+
+        if warnings:
+            response.headers["X-Data-Quality-Warnings"] = "; ".join(warnings[:3])
+        if not data_quality.get("is_fully_real_data", False):
+            response.headers["X-Data-Contains-Estimates"] = "true"
+
+        return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

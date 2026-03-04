@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import JSONResponse
 
 from app.services.soil_service import get_soil_service
 from app.services.weather_service import get_weather_service
@@ -16,11 +17,16 @@ async def analyze_soil(
     lon: float = Query(..., ge=-180, le=180, description="Longitude"),
     elevation: float | None = Query(None, ge=-500, le=9000, description="Elevation in meters"),
     land_cover: str = Query("cropland", description="Land cover type"),
-) -> dict:
+) -> JSONResponse:
     """Get comprehensive soil analysis for a geographic point.
 
     Analyzes soil properties, erosion risk, health index, and carbon
     sequestration potential for the specified location.
+
+    Response includes a `data_quality` object with source tracking:
+    - `sources`: Which external APIs provided data
+    - `warnings`: Any fallback/estimation caveats
+    - `is_fully_real_data`: Whether all data comes from real APIs
 
     - **lat**: Latitude (-90 to 90)
     - **lon**: Longitude (-180 to 180)
@@ -35,7 +41,22 @@ async def analyze_soil(
             elevation=elevation,
             land_cover=land_cover,
         )
-        return {"status": "success", "data": result}
+
+        # Build response with data quality headers
+        data_quality = result.get("data_quality", {})
+        warnings = data_quality.get("warnings", [])
+
+        response = JSONResponse(
+            content={"status": "success", "data": result}
+        )
+
+        # Add warning header if data includes estimated values
+        if warnings:
+            response.headers["X-Data-Quality-Warnings"] = "; ".join(warnings[:3])
+        if not data_quality.get("is_fully_real_data", False):
+            response.headers["X-Data-Contains-Estimates"] = "true"
+
+        return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

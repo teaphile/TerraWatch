@@ -2,6 +2,7 @@ import React from 'react';
 import { Shield, Mountain, Droplets, Flame, Waves, ChevronDown, ChevronUp } from 'lucide-react';
 import type { RiskAssessment } from '../../types';
 import { RiskBarChart, RiskRadarChart, CompositeRiskGauge } from '../Dashboard/Charts';
+import { DataQualityBanner } from '../Common';
 
 interface RiskAnalysisPanelProps {
   assessment: RiskAssessment | null;
@@ -77,6 +78,9 @@ const RiskAnalysisPanel: React.FC<RiskAnalysisPanelProps> = ({ assessment }) => 
 
   return (
     <div className="space-y-4 overflow-y-auto max-h-[calc(100vh-140px)] pr-1 scrollbar-thin">
+      {/* Data Quality Banner */}
+      <DataQualityBanner dataQuality={assessment.data_quality} />
+
       {/* Composite Risk Gauge */}
       <div className="bg-surface-700/30 rounded-lg p-3 border border-surface-600">
         <p className="text-xs font-medium text-text-secondary mb-2">Composite Risk</p>

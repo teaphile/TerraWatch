@@ -87,6 +87,32 @@ class DisasterService:
         climate = await self._weather.get_climate_normals(latitude, longitude)
         annual_precip = climate.get("mean_annual_precip_mm", 800)
 
+        # Track data sources and warnings for transparency
+        data_sources = []
+        data_warnings = []
+
+        if weather.get("source") == "estimated":
+            data_warnings.append(
+                "Weather data is estimated from latitude heuristics. "
+                "Risk scores may be less accurate."
+            )
+            data_sources.append("estimated_weather")
+        else:
+            data_sources.append("open-meteo")
+
+        if soil_moisture_data.get("source") == "estimated":
+            data_warnings.append(
+                "Soil moisture is hardcoded fallback, not real measurement."
+            )
+        else:
+            data_sources.append("open-meteo_soil_moisture")
+
+        if climate.get("source") == "estimated":
+            data_warnings.append(
+                "Climate normals estimated from latitude -- "
+                "not from weather station records."
+            )
+
         # Landslide risk
         landslide = self._landslide.predict(
             latitude=latitude,
@@ -185,6 +211,22 @@ class DisasterService:
                 "wind_speed_kmh": wind,
                 "precipitation_mm": precip,
                 "soil_moisture_pct": soil_moisture,
+            },
+            "data_quality": {
+                "sources": list(set(data_sources)),
+                "warnings": data_warnings,
+                "weather_source": weather.get("source", "unknown"),
+                "soil_moisture_source": soil_moisture_data.get("source", "unknown"),
+                "is_fully_real_data": (
+                    weather.get("source") == "open-meteo"
+                    and soil_moisture_data.get("source") == "open-meteo"
+                    and climate.get("source") == "open-meteo"
+                ),
+                "note": (
+                    "Risk models use analytical/heuristic methods, not trained ML. "
+                    "Weights are expert-calibrated but not validated against historical "
+                    "event inventories. Use as screening tool, not for engineering decisions."
+                ),
             },
             "timestamp": self._timestamp(),
         }

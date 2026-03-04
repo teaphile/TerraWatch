@@ -1,4 +1,4 @@
-"""TerraWatch — FastAPI Application Entry Point.
+"""TerraWatch -- FastAPI Application Entry Point.
 
 Global Real-Time Soil & Natural Disaster Risk Monitoring Platform.
 """
@@ -163,6 +163,130 @@ async def soil_moisture_timeseries(
     weather = get_weather_service()
     data = await weather.get_historical_data(lat, lon, days)
     return {"status": "success", "data": data}
+
+
+@app.get("/api/v1/data-quality", tags=["Data Quality"])
+async def data_quality_report(
+    lat: float = 0.0,
+    lon: float = 0.0,
+) -> dict:
+    """Report on data source availability and quality.
+
+    Returns information about which data sources are live,
+    which are using fallback/estimated values, and overall
+    data quality assessment for the platform.
+    """
+    from app.services.weather_service import get_weather_service
+    from app.data.ingestion.soil_fetcher import get_soil_fetcher
+
+    sources = {}
+    warnings = []
+
+    # Check ISRIC SoilGrids
+    try:
+        fetcher = get_soil_fetcher()
+        isric_data = await fetcher.fetch_properties(lat, lon)
+        sources["isric_soilgrids"] = {
+            "status": "available" if isric_data else "unavailable",
+            "description": "ISRIC SoilGrids v2.0 -- 250m resolution global soil properties",
+            "url": "https://rest.isric.org/soilgrids/v2.0",
+        }
+        if not isric_data:
+            warnings.append("ISRIC SoilGrids API returned no data -- soil properties will use analytical estimation.")
+    except Exception as e:
+        sources["isric_soilgrids"] = {"status": "error", "error": str(e)}
+        warnings.append(f"ISRIC SoilGrids API error: {e}")
+
+    # Check Open-Meteo
+    try:
+        wx = get_weather_service()
+        weather = await wx.get_current_weather(lat, lon)
+        sources["open_meteo_weather"] = {
+            "status": "live" if weather.get("source") == "open-meteo" else "fallback",
+            "description": "Open-Meteo -- free weather API (no key required)",
+            "url": "https://api.open-meteo.com/v1",
+        }
+        if weather.get("source") != "open-meteo":
+            warnings.append("Open-Meteo weather API unavailable -- using latitude-based estimates.")
+
+        moisture = await wx.get_soil_moisture(lat, lon)
+        sources["open_meteo_soil_moisture"] = {
+            "status": "live" if moisture.get("source") == "open-meteo" else "fallback",
+            "description": "Open-Meteo soil moisture at multiple depths",
+        }
+    except Exception as e:
+        sources["open_meteo"] = {"status": "error", "error": str(e)}
+
+    # Check USGS
+    sources["usgs_earthquakes"] = {
+        "status": "enabled" if settings.USGS_API_ENABLED else "disabled",
+        "description": "USGS Earthquake Hazards Program real-time feed",
+        "url": "https://earthquake.usgs.gov/fdsnws/event/1",
+    }
+
+    # ML model status
+    from app.models.soil_model import get_soil_model
+    model = get_soil_model()
+    sources["soil_ml_model"] = {
+        "status": "trained" if model.is_trained else "not_available",
+        "description": (
+            "Random Forest + XGBoost ensemble for soil prediction"
+            if model.is_trained
+            else "No trained model available -- using analytical heuristics"
+        ),
+    }
+    if not model.is_trained:
+        warnings.append(
+            "No trained ML model for soil prediction. All soil properties "
+            "come from ISRIC SoilGrids API or analytical estimation. "
+            "The soil_ensemble.joblib file does not exist."
+        )
+
+    # NDVI/Satellite status
+    sources["ndvi_satellite"] = {
+        "status": "estimated",
+        "description": (
+            "NDVI is estimated from latitude heuristics when OpenLandMap "
+            "or Sentinel-2 data is not available."
+        ),
+    }
+
+    # FIRMS fire data
+    sources["nasa_firms"] = {
+        "status": "available" if getattr(settings, "FIRMS_MAP_KEY", "") else "limited",
+        "description": (
+            "NASA FIRMS active fire data. Full API requires MAP_KEY."
+        ),
+    }
+
+    # Overall quality
+    live_count = sum(
+        1 for s in sources.values()
+        if s.get("status") in ("available", "live", "enabled", "trained")
+    )
+    total_count = len(sources)
+
+    return {
+        "status": "success",
+        "data": {
+            "overall_quality": (
+                "good" if live_count >= 4
+                else "moderate" if live_count >= 2
+                else "limited"
+            ),
+            "live_sources": live_count,
+            "total_sources": total_count,
+            "sources": sources,
+            "warnings": warnings,
+            "transparency_note": (
+                "TerraWatch uses multiple external APIs for real data. "
+                "When an API is unavailable, analytical fallback values "
+                "are used. The 'source' field in every API response "
+                "indicates whether data is real or estimated. "
+                "The data_quality object provides detailed source tracking."
+            ),
+        },
+    }
 
 
 @app.post("/api/v1/area/analyze", tags=["Area Analysis"])

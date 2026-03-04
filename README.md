@@ -214,8 +214,8 @@ graph TB
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/damnaum/two.git
-cd two/terrawatch
+git clone https://github.com/teaphile/TerraWatch.git
+cd TerraWatch
 ```
 
 ### 2. Start the backend
@@ -424,7 +424,7 @@ Located in `backend/app/models/`:
 
 | Model | File | Method |
 |-------|------|--------|
-| **Soil Property Prediction** | `soil_model.py` | Combines ISRIC SoilGrids API data with terrain/climate corrections. Fills data gaps using pedotransfer functions based on texture class and organic content. |
+| **Soil Property Prediction** | `soil_model.py` | Uses ISRIC SoilGrids API as primary data source (250m resolution global soil data). When ISRIC is unavailable, falls back to analytical estimation using pedotransfer-style heuristics based on latitude, climate, and terrain variables. Note: No trained ML model is currently deployed — the Random Forest + XGBoost ensemble architecture exists but requires training data. Confidence scores reflect data source quality. |
 | **RUSLE Erosion** | `erosion_model.py` | Computes `A = R × K × LS × C × P` where R is derived from annual precipitation pattern, K from soil texture triangle + organic carbon, LS from slope/length (Wischmeier & Smith), C from NDVI-derived cover, and P from land use/practice assumptions. |
 | **Landslide Susceptibility** | `landslide_model.py` | Weighted linear combination of 10 factors with sigmoid transformation to 0–1 probability. Weights calibrated against landslide inventory data. Regional multipliers for Himalayan, Andean, Alpine, and Pacific Rim zones. |
 | **Flood Risk** | `flood_model.py` | Multi-factor scoring: elevation deficit, slope, infiltration capacity (from soil texture), rainfall accumulation (24/48/72h), drainage area, imperviousness. Return period estimated via log-normal fit. |
@@ -462,7 +462,7 @@ All configuration is managed via environment variables (loaded from `.env` file 
 | `PORT` | `8000` | Server bind port (overridden to 7860 on HF Spaces) |
 | `DATABASE_URL` | `sqlite+aiosqlite:///./terrawatch.db` | Async database connection string |
 | `CORS_ORIGINS` | `localhost:3000, localhost:5173, *.hf.space` | Comma-separated allowed origins |
-| `API_SECRET_KEY` | _(auto-generated)_ | Secret key for optional auth middleware |
+| `API_SECRET_KEY` | _(empty, open in dev)_ | Secret key for API auth; set via env var in production |
 | `OPENWEATHER_API_KEY` | _(empty)_ | Optional OpenWeatherMap key (fallback source) |
 | `MAPBOX_TOKEN` | _(empty)_ | Optional Mapbox token (not used by default) |
 | `OPEN_METEO_ENABLED` | `True` | Enable Open-Meteo weather integration |
@@ -566,6 +566,40 @@ terrawatch/
 ├── LICENSE                            # MIT License
 └── README.md
 ```
+
+---
+
+## Data Quality & Transparency
+
+TerraWatch is designed to be transparent about the source and quality of every data point it returns. Every API response includes a `data_quality` object that tracks:
+
+- **`sources`** — Which external APIs provided data for this response
+- **`warnings`** — Any fallback/estimation caveats
+- **`is_fully_real_data`** — Boolean flag: `true` only when ALL data comes from real APIs
+
+### Data Source Priority
+
+| Data Type | Primary Source | Fallback | How to Tell |
+|-----------|---------------|----------|-------------|
+| Soil properties | ISRIC SoilGrids API (250m) | Analytical estimation (latitude heuristics) | `soil_data_source` field |
+| Weather | Open-Meteo API (real-time) | Latitude-based estimation | `source` field = `"open-meteo"` vs `"estimated"` |
+| Soil moisture | Open-Meteo soil model | Hardcoded defaults (25-32%) | `source` field |
+| NDVI | OpenLandMap MODIS (250m) | Latitude heuristic | `source` field |
+| Earthquakes | USGS real-time feed | None (real data only) | Always real |
+| Active fires | NASA FIRMS | Empty list (requires MAP_KEY) | `source` field |
+
+### Known Limitations
+
+1. **No trained ML model** — The Random Forest + XGBoost soil prediction ensemble exists in code but no `soil_ensemble.joblib` model file is deployed. All soil predictions come from ISRIC SoilGrids or analytical fallback.
+2. **Elevation & slope are estimated** — No Digital Elevation Model (DEM) is integrated. Both values use crude heuristics.
+3. **Risk models are unvalidated** — Landslide, flood, fire, and liquefaction models use expert-weighted analytical methods but have not been validated against historical event inventories.
+4. **No ground truth comparison** — No accuracy metrics (RMSE, MAE, R²) are computed against observational datasets.
+5. **NDVI may be estimated** — If OpenLandMap is unavailable, NDVI is guessed from latitude.
+6. **In-memory cache** — Data does not persist across restarts (SQLite DB is used for alerts only).
+
+### Data Quality Endpoint
+
+Query `/api/v1/data-quality?lat={lat}&lon={lon}` to get a real-time report on which data sources are live vs. using fallbacks for any location.
 
 ---
 

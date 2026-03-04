@@ -29,7 +29,8 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173,https://*.hf.space"
 
     # API Keys
-    API_SECRET_KEY: str = "terrawatch-default-secret-key-change-me"
+    API_SECRET_KEY: str = ""  # Must be set via environment variable for production
+    FIRMS_MAP_KEY: str = ""  # NASA FIRMS MAP_KEY (get free at firms.modaps.eosdis.nasa.gov)
     OPENWEATHER_API_KEY: str = ""
     MAPBOX_TOKEN: str = ""
 

@@ -81,7 +81,10 @@ export interface SoilAnalysis {
     ndvi: number;
     slope_degrees: number;
     land_cover: string;
+    elevation_source?: string;
+    slope_source?: string;
   };
+  data_quality?: DataQuality;
   timestamp: string;
 }
 
@@ -135,6 +138,7 @@ export interface RiskAssessment {
     precipitation_mm: number;
     soil_moisture_pct: number;
   };
+  data_quality?: DataQuality;
   timestamp: string;
 }
 
@@ -172,6 +176,17 @@ export interface Alert {
 export interface ApiResponse<T> {
   status: string;
   data: T;
+}
+
+export interface DataQuality {
+  sources: string[];
+  warnings: string[];
+  soil_data_source?: string;
+  weather_data_source?: string;
+  soil_moisture_source?: string;
+  weather_source?: string;
+  is_fully_real_data: boolean;
+  note?: string;
 }
 
 export interface MapLayer {
