@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Activity, BarChart3, List, TrendingUp } from 'lucide-react';
+import { Activity, BarChart3, List } from 'lucide-react';
 import type { EarthquakeEvent } from '../../types';
 import { EarthquakeMagDistChart, EarthquakeDepthMagChart, EarthquakeTimelineChart } from './Charts';
 

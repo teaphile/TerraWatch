@@ -182,7 +182,7 @@ function GenericRecsView({ data }: { data: DisasterPreparedness | RestorationRec
   if (!data) return null;
 
   // Unwrap {status, data} wrapper if present
-  const inner = (data as Record<string, unknown>)?.data ?? data;
+  const inner = (data as unknown as Record<string, unknown>)?.data ?? data;
   const rawInner = inner as Record<string, unknown>;
   const items: Recommendation[] = Array.isArray(rawInner)
     ? rawInner
@@ -192,7 +192,7 @@ function GenericRecsView({ data }: { data: DisasterPreparedness | RestorationRec
     return (
       <div className="space-y-2">
         {/* Summary */}
-        {rawInner.summary && (
+        {typeof rawInner.summary === 'string' && rawInner.summary.length > 0 && (
           <div className="bg-primary-600/10 border border-primary-600/30 rounded-lg p-3">
             <p className="text-xs text-text-secondary">{rawInner.summary as string}</p>
           </div>

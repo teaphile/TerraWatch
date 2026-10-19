@@ -5,7 +5,7 @@ import { MapView } from './components/Map';
 import { SoilAnalysisPanel, RiskAnalysisPanel, RecommendationsPanel, ExportPanel } from './components/Analysis';
 import { RiskSummary, AlertFeed, EarthquakeList } from './components/Dashboard';
 import WeatherDashboard from './components/Dashboard/WeatherDashboard';
-import api from './services/api';
+import api, { ApiError } from './services/api';
 import wsService from './services/websocket';
 import type { SoilAnalysis, RiskAssessment, EarthquakeEvent, Alert } from './types';
 
@@ -43,6 +43,7 @@ const App: React.FC = () => {
   const [earthquakes, setEarthquakes] = useState<EarthquakeEvent[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [wsConnected, setWsConnected] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Fetch earthquakes on mount and every 2 minutes
   useEffect(() => {
@@ -91,9 +92,15 @@ const App: React.FC = () => {
       setAlerts((prev) => [alert, ...prev].slice(0, 100));
     });
 
+    const unsubInitial = wsService.onInitial((snapshot) => {
+      // Replace the snapshot returned by REST with the live one.
+      setAlerts(snapshot.slice(0, 100));
+    });
+
     return () => {
       unsub();
       unsubAlert();
+      unsubInitial();
       wsService.disconnect();
     };
   }, []);
@@ -104,6 +111,7 @@ const App: React.FC = () => {
     setIsLoading(true);
     setSoilAnalysis(null);
     setRiskAssessment(null);
+    setErrorMessage(null);
 
     try {
       const [soilRes, riskRes] = await Promise.allSettled([
@@ -120,11 +128,24 @@ const App: React.FC = () => {
         setRiskAssessment(d);
       }
 
+      const failures = [soilRes, riskRes].filter(
+        (result): result is PromiseRejectedResult => result.status === 'rejected',
+      );
+      if (failures.length === 2) {
+        const reason = failures[0].reason;
+        setErrorMessage(
+          reason instanceof ApiError
+            ? reason.message
+            : 'Analysis failed. Please check that the backend is running.',
+        );
+      }
+
       if (soilRes.status === 'fulfilled' && sidebarCollapsed) {
         setSidebarCollapsed(false);
       }
     } catch (err) {
       console.error('Analysis failed:', err);
+      setErrorMessage(err instanceof Error ? err.message : 'Analysis failed.');
     } finally {
       setIsLoading(false);
     }
@@ -156,9 +177,12 @@ const App: React.FC = () => {
     [handleMapClick],
   );
 
-  // Dismiss alert
+  // Dismiss alert (optimistic local update, synced to the backend)
   const handleDismissAlert = useCallback((id: string) => {
     setAlerts((prev) => prev.filter((a) => a.id !== id));
+    api.dismissAlert(id).catch((err) => {
+      console.warn('Could not dismiss alert on the server:', err);
+    });
   }, []);
 
   // Render sidebar panel content
@@ -236,12 +260,29 @@ const App: React.FC = () => {
 
             {/* Quick Risk Summary — desktop bottom-right overlay, scrollable */}
             {riskAssessment && (
-              <div className="hidden sm:block absolute top-3 right-3 z-[1000] w-72 max-h-[calc(100vh-120px)] overflow-y-auto glass-card p-3 shadow-xl scrollbar-thin">
+              <div className="hidden sm:block absolute top-20 right-3 z-[1000] w-72 max-h-[calc(100vh-160px)] overflow-y-auto glass-card p-3 shadow-xl scrollbar-thin">
                 <RiskSummary assessment={riskAssessment} />
               </div>
             )}
           </main>
         </div>
+
+        {errorMessage && (
+          <div className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-[2000] max-w-[92vw] sm:max-w-md">
+            <div className="glass-card border border-red-500/40 bg-red-500/10 px-4 py-3 shadow-xl flex items-start gap-3">
+              <span className="text-red-400 text-sm font-semibold">!</span>
+              <p className="text-xs text-text-primary flex-1">{errorMessage}</p>
+              <button
+                type="button"
+                onClick={() => setErrorMessage(null)}
+                className="text-text-muted hover:text-text-primary text-xs"
+                aria-label="Dismiss error"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </ErrorBoundary>
   );

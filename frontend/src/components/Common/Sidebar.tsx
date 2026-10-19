@@ -41,7 +41,7 @@ const TABS: { key: SidebarTab; label: string; shortLabel: string; icon: typeof L
 ];
 
 // Mobile shows first 5 tabs in bottom nav
-const MOBILE_TABS = TABS.slice(0, 5);
+const MOBILE_TABS = TABS;
 
 function useIsMobile(): boolean {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -78,12 +78,12 @@ const Sidebar: React.FC<SidebarProps> = ({
     return (
       <>
         {/* Mobile Bottom Navigation */}
-        <nav className="mobile-nav bg-surface-800/95 border-t border-surface-600 safe-bottom">
+        <nav className="mobile-nav bg-surface-800/95 border-t border-surface-600 safe-bottom overflow-x-auto">
           {MOBILE_TABS.map(({ key, shortLabel, icon: Icon }) => (
             <button
               key={key}
               onClick={() => handleMobileTab(key)}
-              className={`flex flex-col items-center justify-center gap-0.5 px-1 py-1.5 rounded-lg transition-colors min-w-[48px] ${
+              className={`flex flex-col items-center justify-center gap-0.5 px-1 py-1.5 rounded-lg transition-colors min-w-[44px] flex-1 ${
                 activeTab === key && drawerOpen
                   ? 'text-primary-400'
                   : 'text-text-muted'

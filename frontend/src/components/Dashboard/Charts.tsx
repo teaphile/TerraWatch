@@ -25,7 +25,6 @@ import {
   ComposedChart,
   Scatter,
   ScatterChart,
-  ZAxis,
   ReferenceLine,
 } from 'recharts';
 import type { SoilAnalysis, RiskAssessment, EarthquakeEvent, WeatherData } from '../../types';
@@ -181,10 +180,10 @@ export const MoistureDepthChart: React.FC<{ analysis: SoilAnalysis }> = ({ analy
   if (!m) return null;
 
   const data = [
-    { depth: '0-1cm',  moisture: +((m.surface_0_1cm ?? 0) * 100).toFixed(1) },
-    { depth: '1-3cm',  moisture: +((m.shallow_1_3cm ?? 0) * 100).toFixed(1) },
-    { depth: '3-9cm',  moisture: +((m.mid_3_9cm ?? 0) * 100).toFixed(1) },
-    { depth: '9-27cm', moisture: +((m.deep_9_27cm ?? 0) * 100).toFixed(1) },
+    { depth: '0-1cm',  moisture: +(m.surface_0_1cm ?? 0).toFixed(1) },
+    { depth: '1-3cm',  moisture: +(m.shallow_1_3cm ?? 0).toFixed(1) },
+    { depth: '3-9cm',  moisture: +(m.mid_3_9cm ?? 0).toFixed(1) },
+    { depth: '9-27cm', moisture: +(m.deep_9_27cm ?? 0).toFixed(1) },
   ];
 
   return (
@@ -430,8 +429,13 @@ export const EarthquakeDepthMagChart: React.FC<{ earthquakes: EarthquakeEvent[] 
 export const EarthquakeTimelineChart: React.FC<{ earthquakes: EarthquakeEvent[] }> = ({ earthquakes }) => {
   if (earthquakes.length === 0) return null;
 
-  // Group by hour for the last 24 hours
-  const now = Date.now();
+  // Group by hour for the 24 hours ending at the most recent event. Using
+  // the newest event (rather than the wall clock) keeps the component pure
+  // and avoids an empty window when the feed is slightly stale.
+  const now = earthquakes.reduce((latest, eq) => {
+    const time = new Date(eq.event_time).getTime();
+    return Number.isFinite(time) ? Math.max(latest, time) : latest;
+  }, 0);
   const hourBuckets: { hour: string; count: number; maxMag: number }[] = [];
   for (let h = 23; h >= 0; h--) {
     const start = now - (h + 1) * 3600_000;
