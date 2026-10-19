@@ -7,7 +7,7 @@ based on soil type, groundwater conditions, and seismic intensity.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 import numpy as np
 
@@ -33,7 +33,7 @@ class LiquefactionModel:
         recent_earthquake_magnitude: float = 0.0,
         distance_to_epicenter_km: float = 100.0,
         peak_ground_acceleration: float = 0.0,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Assess liquefaction susceptibility.
 
         Args:
@@ -186,8 +186,7 @@ class LiquefactionModel:
             return 0.15
 
         # Estimate PGA from magnitude and distance
-        if distance_km < 1:
-            distance_km = 1
+        distance_km = max(distance_km, 1)
         estimated_pga = (10 ** (magnitude * 0.5 - 1.5)) / (distance_km ** 0.5)
         return float(np.clip(estimated_pga, 0, 1))
 
@@ -198,8 +197,7 @@ class LiquefactionModel:
         distance_km: float,
     ) -> float:
         """Calculate liquefaction probability for a given earthquake."""
-        if distance_km < 1:
-            distance_km = 1
+        distance_km = max(distance_km, 1)
 
         # Seismic loading factor
         loading = (10 ** (magnitude * 0.4 - 1.2)) / (distance_km ** 0.4)
@@ -221,7 +219,7 @@ class LiquefactionModel:
         return "Very High"
 
 
-_model_instance: Optional[LiquefactionModel] = None
+_model_instance: LiquefactionModel | None = None
 
 
 def get_liquefaction_model() -> LiquefactionModel:

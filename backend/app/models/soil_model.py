@@ -8,13 +8,11 @@ of Random Forest and XGBoost models.
 from __future__ import annotations
 
 import logging
-import os
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, ClassVar
 
 import joblib
 import numpy as np
-from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import StandardScaler
 
 logger = logging.getLogger(__name__)
@@ -31,7 +29,7 @@ class SoilPredictionModel:
     """
 
     # Global soil property statistics for analytical fallback
-    GLOBAL_MEANS = {
+    GLOBAL_MEANS: ClassVar[dict] = {
         "ph": 6.5,
         "organic_carbon": 1.8,
         "nitrogen": 0.15,
@@ -42,7 +40,7 @@ class SoilPredictionModel:
         "bulk_density": 1.35,
     }
 
-    TEXTURE_CLASSES = {
+    TEXTURE_CLASSES: ClassVar[dict] = {
         "Sand": (85, 10, 5),
         "Loamy Sand": (75, 15, 10),
         "Sandy Loam": (60, 25, 15),
@@ -59,8 +57,8 @@ class SoilPredictionModel:
 
     def __init__(self) -> None:
         """Initialize the soil prediction model."""
-        self.models: Dict[str, Any] = {}
-        self.scaler: Optional[StandardScaler] = None
+        self.models: dict[str, Any] = {}
+        self.scaler: StandardScaler | None = None
         self.is_trained = False
         self._try_load_models()
 
@@ -87,7 +85,7 @@ class SoilPredictionModel:
         mean_precip: float = 800.0,
         land_cover: str = "cropland",
         ndvi: float = 0.5,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Predict soil properties for a given location.
 
         Args:
@@ -133,7 +131,7 @@ class SoilPredictionModel:
         mean_precip: float,
         land_cover: str,
         ndvi: float,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Analytical estimation when trained models aren't available.
 
         Uses pedotransfer functions and empirical relationships to
@@ -247,7 +245,7 @@ class SoilPredictionModel:
         mean_precip: float,
         land_cover: str,
         ndvi: float,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Predict using trained analytical models."""
         features = self._prepare_features(
             latitude, longitude, elevation, slope,
@@ -330,9 +328,7 @@ class SoilPredictionModel:
                 return "Sandy Clay Loam"
             return "Silty Clay Loam"
         elif clay >= 7 and clay < 27:
-            if silt >= 50 and clay >= 12:
-                return "Silt Loam"
-            elif silt >= 50:
+            if (silt >= 50 and clay >= 12) or silt >= 50:
                 return "Silt Loam"
             elif sand >= 52:
                 return "Sandy Loam"
@@ -368,7 +364,7 @@ class SoilPredictionModel:
 
 
 # Singleton
-_model_instance: Optional[SoilPredictionModel] = None
+_model_instance: SoilPredictionModel | None = None
 
 
 def get_soil_model() -> SoilPredictionModel:

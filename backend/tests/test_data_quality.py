@@ -5,16 +5,17 @@ Validates that all API responses include proper data source
 attribution and warnings when estimated data is used.
 """
 
-import pytest
-import sys
 import os
+import sys
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from httpx import AsyncClient, ASGITransport
 from app.main import app
-from app.models.soil_model import SoilPredictionModel, get_soil_model
+from app.models.soil_model import get_soil_model
 from app.services.weather_service import WeatherService
+from httpx import ASGITransport, AsyncClient
 
 
 class TestDataSourceTracking:

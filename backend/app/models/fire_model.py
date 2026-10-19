@@ -7,7 +7,7 @@ weather conditions, and topographic factors.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 
@@ -35,7 +35,7 @@ class FireModel:
         elevation: float = 300.0,
         land_cover: str = "forest",
         days_since_rain: int = 3,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Predict wildfire risk for a location.
 
         Args:
@@ -293,7 +293,7 @@ class FireModel:
             return "Very High"
         return "Extreme"
 
-    def _get_contributing_factors(self, scores: Dict[str, float]) -> List[str]:
+    def _get_contributing_factors(self, scores: dict[str, float]) -> list[str]:
         """Get top contributing factors."""
         names = {
             "fuel_moisture": "dry_vegetation",
@@ -305,7 +305,7 @@ class FireModel:
         return [names[k] for k, v in sorted_f[:2] if v > 0.3]
 
 
-_model_instance: Optional[FireModel] = None
+_model_instance: FireModel | None = None
 
 
 def get_fire_model() -> FireModel:

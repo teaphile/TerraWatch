@@ -8,8 +8,8 @@ FROM node:20-alpine AS frontend-build
 
 WORKDIR /build
 
-COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm install
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
 
 COPY frontend/ .
 RUN npm run build
@@ -33,12 +33,16 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Application code
 COPY backend/app/ app/
+COPY backend/ml/ ml/
 
 # Copy built frontend into expected location
 COPY --from=frontend-build /build/dist /app/frontend/dist
 
 # Create writable data directory
 RUN mkdir -p /app/data && chown -R appuser:appuser /app
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+    CMD curl -fsS http://localhost:7860/api/v1/health || exit 1
 
 USER appuser
 

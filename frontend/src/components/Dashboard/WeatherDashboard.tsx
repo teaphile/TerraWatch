@@ -55,7 +55,6 @@ const WeatherDashboard: React.FC<WeatherDashboardProps> = ({ soilAnalysis, riskA
   const windSpd = w?.wind_speed_kmh ?? c?.wind_speed_kmh ?? 0;
   const windDir = w?.wind_direction_deg ?? 0;
   const precip = w?.precipitation_mm ?? c?.precipitation_mm ?? 0;
-  const rain = w?.rain_mm ?? 0;
   const code = w?.weather_code ?? 0;
   const soilMoisture = c?.soil_moisture_pct ?? 0;
 
@@ -68,24 +67,6 @@ const WeatherDashboard: React.FC<WeatherDashboardProps> = ({ soilAnalysis, riskA
     { label: 'Direction', value: `${windDirection(windDir)} (${windDir.toFixed(0)}°)`, icon: <Compass className="w-4 h-4" />, color: 'text-text-secondary' },
     { label: 'Precipitation', value: `${precip.toFixed(1)} mm`, icon: <CloudRain className="w-4 h-4" />, color: precip > 10 ? 'text-blue-400' : 'text-text-secondary' },
     { label: 'Soil Moisture', value: soilMoisture > 0 ? `${soilMoisture.toFixed(1)}%` : 'N/A', icon: <Gauge className="w-4 h-4" />, color: soilMoisture > 70 ? 'text-blue-400' : 'text-text-secondary' },
-  ];
-
-  // Data for charts
-  const chartData = {
-    temperature: temp,
-    humidity,
-    wind_speed: windSpd,
-    precipitation: precip,
-    rain,
-    soil_moisture: soilMoisture,
-  };
-
-  const radarData = [
-    { metric: 'Temperature', value: Math.min(((temp + 10) / 60) * 100, 100) },
-    { metric: 'Humidity', value: humidity },
-    { metric: 'Wind', value: Math.min((windSpd / 100) * 100, 100) },
-    { metric: 'Precipitation', value: Math.min((precip / 50) * 100, 100) },
-    { metric: 'Soil Moisture', value: soilMoisture },
   ];
 
   return (

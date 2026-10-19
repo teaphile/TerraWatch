@@ -93,7 +93,7 @@ const AlertFeed: React.FC<AlertFeedProps> = ({ alerts, onDismiss }) => {
                 <p className="text-xs text-text-secondary mt-0.5 line-clamp-2">
                   {alert.description}
                 </p>
-                {alert.latitude && alert.longitude && (
+                {alert.latitude != null && alert.longitude != null && (
                   <p className="text-[10px] text-text-muted mt-1">
                     📍 {alert.latitude.toFixed(2)}, {alert.longitude.toFixed(2)}
                   </p>

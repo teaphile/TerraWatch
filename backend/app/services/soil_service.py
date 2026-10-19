@@ -1,105 +1,140 @@
-"""Soil analysis business logic service.
+"""Soil analysis business logic.
 
-Orchestrates soil property prediction, erosion calculation,
-carbon sequestration estimation, and health scoring.
+Orchestrates soil property prediction, erosion calculation, carbon
+sequestration estimation and health scoring. A single :meth:`get_site_context`
+call gathers every environmental input concurrently so the soil and disaster
+services share one consistent snapshot of a location.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
-from typing import Any, Dict, List, Optional
+import math
+from datetime import UTC
+from typing import Any
 
-import numpy as np
-
-from app.models.soil_model import get_soil_model
-from app.models.erosion_model import get_erosion_model
-from app.services.cache_service import get_soil_cache
-from app.services.weather_service import get_weather_service
 from app.data.ingestion.soil_fetcher import get_soil_fetcher
+from app.models.erosion_model import get_erosion_model
+from app.models.soil_model import get_soil_model
+from app.services.cache_service import get_soil_cache
+from app.services.satellite_service import get_satellite_service
+from app.services.weather_service import get_weather_service
 
 logger = logging.getLogger(__name__)
 
 
 class SoilService:
-    """Service for comprehensive soil analysis.
-
-    Combines ML predictions, erosion modeling, carbon estimation,
-    and health scoring into a complete soil analysis report.
-    """
+    """Service for comprehensive soil analysis."""
 
     def __init__(self) -> None:
-        """Initialize soil analysis service."""
         self._soil_model = get_soil_model()
         self._erosion_model = get_erosion_model()
         self._weather = get_weather_service()
         self._soil_fetcher = get_soil_fetcher()
+        self._satellite = get_satellite_service()
         self._cache = get_soil_cache()
 
-    async def analyze(
-        self,
-        latitude: float,
-        longitude: float,
-        elevation: Optional[float] = None,
-        land_cover: str = "cropland",
-    ) -> Dict[str, Any]:
-        """Perform comprehensive soil analysis for a location.
+    # ------------------------------------------------------------------
+    # Shared environmental context
+    # ------------------------------------------------------------------
 
-        Args:
-            latitude: Location latitude (-90 to 90).
-            longitude: Location longitude (-180 to 180).
-            elevation: Elevation in meters (estimated if not provided).
-            land_cover: Land cover type.
+    async def get_site_context(
+        self, latitude: float, longitude: float, land_cover: str = "cropland"
+    ) -> dict[str, Any]:
+        """Collect weather, terrain and soil data for a location.
 
-        Returns:
-            Complete soil analysis report dictionary.
+        All upstream requests run concurrently and the result is cached, so
+        calling this from both the soil and disaster endpoints does not
+        trigger duplicate API traffic.
         """
         cache_key = self._cache.make_key(
-            "soil",
-            lat=round(latitude, 3),
-            lon=round(longitude, 3),
-            lc=land_cover,
+            "site", lat=round(latitude, 3), lon=round(longitude, 3), lc=land_cover
         )
         cached = self._cache.get(cache_key)
         if cached:
             return cached
 
-        # Get climate data
-        climate = await self._weather.get_climate_normals(latitude, longitude)
-        weather = await self._weather.get_current_weather(latitude, longitude)
-        soil_moisture_data = await self._weather.get_soil_moisture(latitude, longitude)
+        results = await asyncio.gather(
+            self._weather.get_current_weather(latitude, longitude),
+            self._weather.get_climate_normals(latitude, longitude),
+            self._weather.get_soil_moisture(latitude, longitude),
+            self._weather.get_elevation(latitude, longitude),
+            self._weather.get_elevation_neighbors(latitude, longitude),
+            self._weather.get_precipitation_summary(latitude, longitude),
+            self._soil_fetcher.fetch_properties(latitude, longitude),
+            return_exceptions=True,
+        )
 
-        mean_temp = climate.get("mean_annual_temp_c", 15.0)
-        mean_precip = climate.get("mean_annual_precip_mm", 800.0)
+        (
+            weather_result,
+            climate_result,
+            moisture_result,
+            elevation_result,
+            neighbours_result,
+            precipitation_result,
+            isric_result,
+        ) = results
 
-        # Get elevation from API (with grid fallback)
-        if elevation is None:
-            elev_data = await self._weather.get_elevation(latitude, longitude)
-            elevation = elev_data.get("elevation_m", 200.0)
-            elevation_source = elev_data.get("source", "estimated")
+        # ---- Resolve each result, falling back to estimates on failure ----
+        weather = (
+            weather_result
+            if isinstance(weather_result, dict)
+            else self._weather._estimate_weather(latitude, longitude)
+        )
+        climate = (
+            climate_result
+            if isinstance(climate_result, dict)
+            else self._weather._estimate_climate(latitude, longitude)
+        )
+        soil_moisture_data = (
+            moisture_result
+            if isinstance(moisture_result, dict)
+            else self._weather._estimate_soil_moisture(latitude, longitude)
+        )
+        precipitation = (
+            precipitation_result
+            if isinstance(precipitation_result, dict)
+            else self._weather._estimate_precipitation(latitude, longitude)
+        )
+        isric_data = isric_result if isinstance(isric_result, dict) else None
+
+        if isinstance(elevation_result, dict):
+            elevation = float(elevation_result.get("elevation_m", 200.0))
+            elevation_source = str(elevation_result.get("source", "estimated"))
         else:
-            elevation_source = "user_provided"
+            elevation = self._weather._lookup_elevation_grid(latitude, longitude)
+            elevation_source = "etopo10_grid"
 
-        # Compute slope from elevation gradient
-        slope, slope_source = await self._compute_slope(latitude, longitude, elevation)
-        ndvi = self._estimate_ndvi(latitude, longitude, land_cover, mean_temp, mean_precip)
+        if isinstance(neighbours_result, dict):
+            neighbours = neighbours_result
+        else:
+            neighbours = {
+                "center": elevation,
+                "north": elevation,
+                "south": elevation,
+                "east": elevation,
+                "west": elevation,
+            }
 
-        # ---------- DATA SOURCE PRIORITY ----------
-        # 1. Try ISRIC SoilGrids API (real observed/modeled data at 250m resolution)
-        # 2. Fall back to analytical estimation (heuristic pedotransfer functions)
-        data_sources: List[str] = []
-        data_warnings: List[str] = []
+        slope, slope_source = self._compute_slope(
+            latitude, elevation, neighbours
+        )
+        mean_temp = float(climate.get("mean_annual_temp_c", 15.0))
+        mean_precip = float(climate.get("mean_annual_precip_mm", 800.0))
+        ndvi = float(
+            self._satellite.estimate_ndvi(
+                latitude, longitude, land_cover
+            )["ndvi"]
+        )
 
-        isric_data = await self._soil_fetcher.fetch_properties(latitude, longitude)
+        data_sources: list[str] = []
+        data_warnings: list[str] = []
+
         if isric_data:
             soil_props = self._isric_to_soil_props(isric_data)
             data_sources.append("isric_soilgrids")
         else:
-            data_warnings.append(
-                "ISRIC SoilGrids API unavailable -- soil properties are estimated "
-                "from analytical heuristics (latitude, climate, elevation). "
-                "Accuracy is significantly lower than observational data."
-            )
-            # Predict soil properties using analytical model
             soil_props = self._soil_model.predict(
                 latitude=latitude,
                 longitude=longitude,
@@ -110,37 +145,145 @@ class SoilService:
                 land_cover=land_cover,
                 ndvi=ndvi,
             )
-            data_sources.append(soil_props.get("_data_source", "analytical_estimation"))
+            data_sources.append(
+                soil_props.get("_data_source", "analytical_estimation")
+            )
+            data_warnings.append(
+                "ISRIC SoilGrids API unavailable -- soil properties are "
+                "estimated from analytical pedotransfer heuristics. Accuracy "
+                "is significantly lower than observational data."
+            )
 
-        # Track weather data source
         if climate.get("source") == "open-meteo":
             data_sources.append("open-meteo")
         else:
-            data_sources.append("estimated_climate")
+            data_sources.append("builtin_climatology")
             data_warnings.append(
-                "Climate normals estimated from latitude -- Open-Meteo API was unavailable."
+                "Climate normals are estimated from the built-in climatology "
+                "-- the Open-Meteo archive API was unavailable."
             )
 
-        if weather.get("source") == "estimated":
+        if weather.get("source") != "open-meteo":
             data_warnings.append(
-                "Current weather data estimated from latitude -- "
-                "Open-Meteo API was unavailable. Risk scores may be less accurate."
+                "Current weather is estimated from climate normals -- "
+                "Open-Meteo was unavailable. Hazard scores may be less accurate."
             )
 
-        if soil_moisture_data.get("source") == "estimated":
+        if soil_moisture_data.get("source") == "open-meteo":
+            data_sources.append("open-meteo_soil_moisture")
+        elif soil_moisture_data.get("source") == "cached":
             data_warnings.append(
-                "Soil moisture data is hardcoded fallback -- not from live API."
+                "Soil moisture comes from a cached measurement rather than "
+                "a live API reading."
+            )
+        else:
+            data_warnings.append(
+                "Soil moisture is estimated from climate normals, not "
+                "measured by the Open-Meteo soil model."
             )
 
-        # Update moisture from actual data if available
-        if soil_moisture_data.get("average_pct"):
+        # Use the measured / estimated profile average as the headline value.
+        if soil_moisture_data.get("average_pct") is not None:
+            is_live = soil_moisture_data.get("source") == "open-meteo"
             soil_props["moisture_pct"] = {
                 "value": soil_moisture_data["average_pct"],
-                "confidence": 0.90 if soil_moisture_data["source"] == "open-meteo" else 0.65,
+                "confidence": 0.90 if is_live else 0.60,
             }
 
-        # Calculate erosion risk
-        slope_pct = np.tan(np.radians(slope)) * 100
+        context = {
+            "latitude": round(latitude, 6),
+            "longitude": round(longitude, 6),
+            "land_cover": land_cover,
+            "weather": weather,
+            "climate": climate,
+            "soil_moisture": soil_moisture_data,
+            "precipitation": precipitation,
+            "elevation_m": round(elevation, 1),
+            "elevation_source": elevation_source,
+            "elevation_neighbors": neighbours,
+            "slope_degrees": slope,
+            "slope_source": slope_source,
+            "ndvi": round(ndvi, 3),
+            "soil_properties": soil_props,
+            "isric_used": bool(isric_data),
+            "data_sources": sorted(set(data_sources)),
+            "data_warnings": data_warnings,
+            "is_fully_real_data": bool(
+                isric_data
+                and climate.get("source") == "open-meteo"
+                and weather.get("source") == "open-meteo"
+                and soil_moisture_data.get("source") == "open-meteo"
+            ),
+        }
+
+        self._cache.set(cache_key, context)
+        return context
+
+    # ------------------------------------------------------------------
+    # Full analysis
+    # ------------------------------------------------------------------
+
+    async def analyze(
+        self,
+        latitude: float,
+        longitude: float,
+        elevation: float | None = None,
+        land_cover: str = "cropland",
+    ) -> dict[str, Any]:
+        """Perform a complete soil analysis for a location."""
+        cache_key = self._cache.make_key(
+            "soil",
+            lat=round(latitude, 3),
+            lon=round(longitude, 3),
+            lc=land_cover,
+            elev=round(elevation, 1) if elevation is not None else None,
+        )
+        cached = self._cache.get(cache_key)
+        if cached:
+            return cached
+
+        context = await self.get_site_context(latitude, longitude, land_cover)
+
+        soil_props = dict(context["soil_properties"])
+
+        if elevation is not None:
+            # Honour a caller-supplied elevation: recompute the terrain
+            # gradient around it and, when no observational soil data is
+            # available, the elevation-dependent analytical soil prediction.
+            elevation_value = float(elevation)
+            elevation_source = "user_provided"
+            slope, slope_source = self._compute_slope(
+                latitude, elevation_value, context["elevation_neighbors"]
+            )
+            if not context["isric_used"]:
+                soil_props = self._soil_model.predict(
+                    latitude=latitude,
+                    longitude=longitude,
+                    elevation=elevation_value,
+                    slope=slope,
+                    mean_temp=float(
+                        context["climate"].get("mean_annual_temp_c", 15.0)
+                    ),
+                    mean_precip=float(
+                        context["climate"].get("mean_annual_precip_mm", 800.0)
+                    ),
+                    land_cover=land_cover,
+                    ndvi=context["ndvi"],
+                )
+        else:
+            elevation_value = context["elevation_m"]
+            elevation_source = context["elevation_source"]
+            slope = context["slope_degrees"]
+            slope_source = context["slope_source"]
+        climate = context["climate"]
+        weather = context["weather"]
+        soil_moisture_data = context["soil_moisture"]
+        ndvi = context["ndvi"]
+        mean_temp = float(climate.get("mean_annual_temp_c", 15.0))
+        mean_precip = float(climate.get("mean_annual_precip_mm", 800.0))
+
+        # RUSLE erosion
+        slope_pct = math.tan(math.radians(slope)) * 100
         erosion = self._erosion_model.calculate(
             annual_precip_mm=mean_precip,
             sand_pct=soil_props["texture"]["sand_pct"],
@@ -153,10 +296,7 @@ class SoilService:
             ndvi=ndvi,
         )
 
-        # Calculate health index
         health = self._calculate_health_index(soil_props, erosion.risk_level)
-
-        # Carbon sequestration
         carbon = self._estimate_carbon_sequestration(
             soil_props["organic_carbon_pct"]["value"],
             soil_props["texture"]["clay_pct"],
@@ -165,13 +305,10 @@ class SoilService:
             land_cover,
         )
 
-        # Get location metadata
-        location_info = self._get_location_info(latitude, longitude, elevation)
-
         result = {
             "location": {
-                **location_info,
-                "elevation_m": round(elevation, 1),
+                **self._get_location_info(latitude, longitude, elevation_value),
+                "elevation_m": round(elevation_value, 1),
             },
             "soil_properties": soil_props,
             "soil_moisture": soil_moisture_data,
@@ -201,16 +338,18 @@ class SoilService:
                 "slope_source": slope_source,
             },
             "data_quality": {
-                "sources": list(set(data_sources)),
-                "warnings": data_warnings,
-                "soil_data_source": "isric_soilgrids" if isric_data else "analytical_estimation",
-                "weather_data_source": climate.get("source", "unknown"),
-                "soil_moisture_source": soil_moisture_data.get("source", "unknown"),
-                "is_fully_real_data": (
-                    bool(isric_data)
-                    and climate.get("source") == "open-meteo"
-                    and soil_moisture_data.get("source") == "open-meteo"
+                "sources": context["data_sources"],
+                "warnings": context["data_warnings"],
+                "soil_data_source": (
+                    "isric_soilgrids"
+                    if context["isric_used"]
+                    else "analytical_estimation"
                 ),
+                "weather_data_source": climate.get("source", "unknown"),
+                "soil_moisture_source": soil_moisture_data.get(
+                    "source", "unknown"
+                ),
+                "is_fully_real_data": context["is_fully_real_data"],
             },
             "timestamp": self._timestamp(),
         }
@@ -218,24 +357,27 @@ class SoilService:
         self._cache.set(cache_key, result)
         return result
 
+    # ------------------------------------------------------------------
+    # Scoring and estimates
+    # ------------------------------------------------------------------
+
     def _calculate_health_index(
-        self, props: Dict[str, Any], erosion_risk: str
-    ) -> Dict[str, Any]:
-        """Calculate overall soil health index (0-100).
+        self, props: dict[str, Any], erosion_risk: str
+    ) -> dict[str, Any]:
+        """Calculate the 0-100 soil health index."""
 
-        Considers pH, organic carbon, structure, erosion, and nutrient status.
-        """
-        scores = []
+        def value_of(key: str, default: float) -> float:
+            value = props.get(key, default)
+            if isinstance(value, dict):
+                value = value.get("value", default)
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return default
 
-        # Handle both ISRIC-based and analytical-based property formats
-        def _get_value(prop_key: str, default: float = 0.0) -> float:
-            val = props.get(prop_key, {})
-            if isinstance(val, dict):
-                return val.get("value", default)
-            return float(val) if val is not None else default
+        scores: list[float] = []
 
-        # pH score (optimal: 6.0-7.0)
-        ph = props["ph"]["value"]
+        ph = value_of("ph", 6.5)
         if 6.0 <= ph <= 7.0:
             ph_score = 100
         elif 5.5 <= ph <= 7.5:
@@ -246,38 +388,38 @@ class SoilService:
             ph_score = 30
         scores.append(ph_score * 0.15)
 
-        # Organic carbon score (higher = better)
-        oc = props["organic_carbon_pct"]["value"]
-        if oc >= 4.0:
+        organic_carbon = value_of("organic_carbon_pct", 1.5)
+        if organic_carbon >= 4.0:
             oc_score = 100
-        elif oc >= 2.0:
+        elif organic_carbon >= 2.0:
             oc_score = 70
-        elif oc >= 1.0:
+        elif organic_carbon >= 1.0:
             oc_score = 40
         else:
             oc_score = 20
         scores.append(oc_score * 0.25)
 
-        # Texture balance (loam is ideal)
-        sand = props["texture"]["sand_pct"]
-        clay = props["texture"]["clay_pct"]
+        sand = float(props["texture"]["sand_pct"])
+        clay = float(props["texture"]["clay_pct"])
         if 20 <= sand <= 50 and 15 <= clay <= 35:
-            text_score = 90
+            texture_score = 90
         elif 10 <= sand <= 70 and 10 <= clay <= 45:
-            text_score = 65
+            texture_score = 65
         else:
-            text_score = 35
-        scores.append(text_score * 0.15)
+            texture_score = 35
+        scores.append(texture_score * 0.15)
 
-        # Erosion score
         erosion_scores = {
-            "Very Low": 100, "Low": 80, "Moderate": 55,
-            "High": 30, "Very High": 15, "Severe": 5,
+            "Very Low": 100,
+            "Low": 80,
+            "Moderate": 55,
+            "High": 30,
+            "Very High": 15,
+            "Severe": 5,
         }
         scores.append(erosion_scores.get(erosion_risk, 50) * 0.20)
 
-        # CEC score (nutrient retention)
-        cec = props.get("cec_cmolkg", 15)
+        cec = value_of("cec_cmolkg", 15.0)
         if cec >= 25:
             cec_score = 100
         elif cec >= 15:
@@ -288,20 +430,18 @@ class SoilService:
             cec_score = 25
         scores.append(cec_score * 0.15)
 
-        # Nitrogen score
-        n = props["nitrogen_pct"]["value"]
-        if n >= 0.3:
+        nitrogen = value_of("nitrogen_pct", 0.15)
+        if nitrogen >= 0.3:
             n_score = 100
-        elif n >= 0.15:
+        elif nitrogen >= 0.15:
             n_score = 70
-        elif n >= 0.08:
+        elif nitrogen >= 0.08:
             n_score = 40
         else:
             n_score = 20
         scores.append(n_score * 0.10)
 
-        total = sum(scores)
-        total = round(min(100, max(0, total)), 0)
+        total = round(min(100, max(0, sum(scores))), 0)
 
         if total >= 85:
             grade, category = "A", "Excellent"
@@ -327,121 +467,105 @@ class SoilService:
         temp: float,
         precip: float,
         land_cover: str,
-    ) -> Dict[str, Any]:
-        """Estimate soil carbon stocks and sequestration potential."""
-        # Current stock (tons/ha, top 30cm)
-        # SOC stock = OC% * bulk_density * depth * 10
-        bulk_density = 1.4 - organic_carbon_pct * 0.05
-        current_stock = organic_carbon_pct * bulk_density * 30 * 0.1
+    ) -> dict[str, Any]:
+        """Estimate soil organic-carbon stocks for the top 30 cm.
 
-        # Potential (based on climate and clay stabilization capacity)
-        clay_capacity = clay_pct * 0.5  # clay stabilizes organic matter
-        climate_factor = min(2.0, precip / 500) * max(0.3, 1 - temp / 40)
-        potential_oc = min(8.0, organic_carbon_pct * 1.5 + clay_capacity * 0.05)
-        potential_stock = potential_oc * (bulk_density - 0.05) * 30 * 0.1
+        Stock (t C/ha) = SOC% × bulk density (g/cm³) × depth (cm).
+        """
+        bulk_density = max(0.8, 1.4 - organic_carbon_pct * 0.05)
+        depth_cm = 30.0
 
-        # Practice-based improvements
+        current_stock = organic_carbon_pct * bulk_density * depth_cm
+
+        clay_capacity = clay_pct * 0.5
+        potential_oc = min(
+            8.0, organic_carbon_pct * 1.5 + clay_capacity * 0.05
+        )
+        potential_bulk_density = max(0.8, bulk_density - 0.05)
+        potential_stock = potential_oc * potential_bulk_density * depth_cm
+
         cover_factors = {
-            "forest": 1.0, "grassland": 0.9, "cropland": 0.5,
-            "shrubland": 0.8, "bare": 0.2,
+            "forest": 1.0,
+            "grassland": 0.9,
+            "cropland": 0.5,
+            "shrubland": 0.8,
+            "bare": 0.2,
         }
-        management_potential = cover_factors.get(land_cover.lower(), 0.6)
+        management_factor = cover_factors.get(land_cover.lower(), 0.6)
 
-        improvement = max(0, (potential_stock - current_stock) / max(current_stock, 1) * 100)
+        improvement = max(
+            0.0,
+            (potential_stock - current_stock) / max(current_stock, 1.0) * 100,
+        )
 
         return {
             "current_stock_tons_ha": round(current_stock, 1),
             "potential_stock_tons_ha": round(potential_stock, 1),
             "improvement_potential_pct": round(improvement, 1),
-            "management_factor": management_potential,
+            "management_factor": management_factor,
         }
 
-    async def _compute_slope(
-        self, lat: float, lon: float, center_elevation: float
+    def _compute_slope(
+        self,
+        lat: float,
+        center_elevation: float,
+        neighbours: dict[str, float],
     ) -> tuple[float, str]:
-        """Compute slope from elevation gradient using neighboring points.
+        """Compute slope from a four-point elevation gradient."""
+        elev_n = neighbours.get("north", center_elevation)
+        elev_s = neighbours.get("south", center_elevation)
+        elev_e = neighbours.get("east", center_elevation)
+        elev_w = neighbours.get("west", center_elevation)
 
-        Fetches elevation at 4 cardinal neighbors (±0.01°) and computes
-        slope from the max gradient. Falls back to heuristic if API fails.
+        if all(
+            value == center_elevation
+            for value in (elev_n, elev_s, elev_e, elev_w)
+        ):
+            return (
+                self._estimate_slope_heuristic(center_elevation, lat),
+                "estimated_heuristic",
+            )
 
-        Returns:
-            Tuple of (slope_degrees, source_string).
-        """
-        import math
-        try:
-            neighbors = await self._weather.get_elevation_neighbors(lat, lon, delta=0.01)
-            elev_n = neighbors.get("north", center_elevation)
-            elev_s = neighbors.get("south", center_elevation)
-            elev_e = neighbors.get("east", center_elevation)
-            elev_w = neighbors.get("west", center_elevation)
+        dy = 2 * 0.01 * 111_111
+        dx = 2 * 0.01 * 111_111 * max(math.cos(math.radians(lat)), 0.01)
 
-            # Horizontal distances in meters
-            # 0.01° latitude ≈ 1111m, 0.01° longitude ≈ 1111m * cos(lat)
-            dy = 2 * 0.01 * 111_111  # N-S distance for 0.02° span
-            dx = 2 * 0.01 * 111_111 * math.cos(math.radians(lat))  # E-W distance
-
-            dz_ns = abs(elev_n - elev_s)
-            dz_ew = abs(elev_e - elev_w)
-
-            slope_ns = math.degrees(math.atan(dz_ns / max(dy, 1)))
-            slope_ew = math.degrees(math.atan(dz_ew / max(dx, 1)))
-            slope = round(math.sqrt(slope_ns**2 + slope_ew**2), 1)
-
-            # Determine source based on whether neighbors came from API or grid
-            # If all neighbors are multiples of 5-deg grid, it's likely grid data
-            source = "computed_from_dem"
-            return max(0.1, min(slope, 60.0)), source
-        except Exception:
-            pass
-
-        # Fallback heuristic
-        return self._estimate_slope_heuristic(center_elevation, lat), "estimated_heuristic"
+        slope_ns = math.degrees(
+            math.atan(abs(elev_n - elev_s) / max(dy, 1))
+        )
+        slope_ew = math.degrees(
+            math.atan(abs(elev_e - elev_w) / max(dx, 1))
+        )
+        slope = math.sqrt(slope_ns**2 + slope_ew**2)
+        return max(0.1, min(slope, 60.0)), "computed_from_dem"
 
     @staticmethod
     def _estimate_slope_heuristic(elevation: float, latitude: float) -> float:
-        """Fallback slope estimation from elevation context.
-
-        WARNING: This is a crude heuristic. Slope computed from DEM
-        gradient is much more accurate.
-        """
+        """Rough slope estimate used when no DEM gradient is available."""
         if elevation > 2000:
             return 25.0
-        elif elevation > 1000:
+        if elevation > 1000:
             return 15.0
-        elif elevation > 500:
+        if elevation > 500:
             return 8.0
-        elif elevation > 200:
+        if elevation > 200:
             return 5.0
         return 2.0
 
-    def _isric_to_soil_props(self, isric_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Convert ISRIC SoilGrids API response to internal soil property format.
+    def _isric_to_soil_props(self, isric_data: dict[str, Any]) -> dict[str, Any]:
+        """Convert SoilGrids values to the internal soil property format."""
+        model = self._soil_model
 
-        ISRIC SoilGrids returns values in specific units that need conversion:
-        - phh2o: pH * 10 (e.g. 65 = pH 6.5)
-        - soc: soil organic carbon in dg/kg (decigrams per kg)
-        - nitrogen: total nitrogen in cg/kg (centigrams per kg)
-        - sand, silt, clay: g/kg (grams per kg)
-        - cec: CEC in mmol(c)/kg
-        - bdod: bulk density in cg/cm³ (centigrams per cm³)
-        """
-        from app.models.soil_model import SoilPredictionModel
-
-        model = SoilPredictionModel()
-
-        # pH (SoilGrids: pH * 10)
         raw_ph = isric_data.get("phh2o")
         ph = round(raw_ph / 10.0, 1) if raw_ph is not None else 6.5
 
-        # Organic carbon (SoilGrids: dg/kg → percentage: / 100)
         raw_soc = isric_data.get("soc")
         organic_carbon = round(raw_soc / 100.0, 2) if raw_soc is not None else 1.8
 
-        # Nitrogen (SoilGrids: cg/kg → percentage: / 1000)
-        raw_n = isric_data.get("nitrogen")
-        nitrogen = round(raw_n / 1000.0, 3) if raw_n is not None else 0.15
+        raw_nitrogen = isric_data.get("nitrogen")
+        nitrogen = (
+            round(raw_nitrogen / 1000.0, 3) if raw_nitrogen is not None else 0.15
+        )
 
-        # Texture fractions (SoilGrids: g/kg → percentage: / 10)
         raw_sand = isric_data.get("sand")
         raw_silt = isric_data.get("silt")
         raw_clay = isric_data.get("clay")
@@ -450,7 +574,6 @@ class SoilService:
         silt = round(raw_silt / 10.0, 1) if raw_silt is not None else 35.0
         clay = round(raw_clay / 10.0, 1) if raw_clay is not None else 25.0
 
-        # Normalize to 100%
         total = sand + silt + clay
         if total > 0 and abs(total - 100.0) > 1.0:
             sand = round(sand / total * 100, 1)
@@ -459,22 +582,36 @@ class SoilService:
 
         texture_class = model._classify_texture(sand, silt, clay)
 
-        # CEC (SoilGrids: mmol(c)/kg → cmol(+)/kg: / 10)
         raw_cec = isric_data.get("cec")
         cec = round(raw_cec / 10.0, 1) if raw_cec is not None else 15.0
 
-        # Bulk density (SoilGrids: cg/cm³ → g/cm³: / 100)
-        raw_bdod = isric_data.get("bdod")
-        bulk_density = round(raw_bdod / 100.0, 2) if raw_bdod is not None else 1.35
+        raw_bulk_density = isric_data.get("bdod")
+        bulk_density = (
+            round(raw_bulk_density / 100.0, 2)
+            if raw_bulk_density is not None
+            else 1.35
+        )
 
-        # Confidence is higher for ISRIC data (peer-reviewed global model)
         confidence = 0.80
 
         return {
-            "ph": {"value": ph, "confidence": confidence, "category": model._ph_category(ph)},
-            "organic_carbon_pct": {"value": organic_carbon, "confidence": confidence},
-            "nitrogen_pct": {"value": nitrogen, "confidence": confidence - 0.05},
-            "moisture_pct": {"value": 30.0, "confidence": 0.5},  # ISRIC doesn't provide moisture; will be overridden
+            "ph": {
+                "value": ph,
+                "confidence": confidence,
+                "category": model._ph_category(ph),
+            },
+            "organic_carbon_pct": {
+                "value": organic_carbon,
+                "confidence": confidence,
+            },
+            "nitrogen_pct": {
+                "value": nitrogen,
+                "confidence": confidence - 0.05,
+            },
+            "moisture_pct": {
+                "value": 30.0,
+                "confidence": 0.5,
+            },
             "texture": {
                 "sand_pct": sand,
                 "silt_pct": silt,
@@ -484,38 +621,14 @@ class SoilService:
             "bulk_density_gcm3": bulk_density,
             "cec_cmolkg": cec,
             "_data_source": "isric_soilgrids",
-            "_source_detail": "ISRIC SoilGrids v2.0 -- 250m resolution global soil data",
+            "_source_detail": "ISRIC SoilGrids v2.0 -- 250 m global soil data",
         }
-
-    # _estimate_slope replaced by _compute_slope + _estimate_slope_heuristic above
-
-    @staticmethod
-    def _estimate_ndvi(
-        lat: float, lon: float, land_cover: str,
-        temp: float, precip: float
-    ) -> float:
-        """Estimate NDVI from environmental variables."""
-        cover_ndvi = {
-            "forest": 0.7, "dense_forest": 0.8, "grassland": 0.5,
-            "shrubland": 0.4, "cropland": 0.45, "bare": 0.1,
-            "urban": 0.15, "water": 0.0, "wetland": 0.5,
-        }
-        base = cover_ndvi.get(land_cover.lower(), 0.4)
-
-        # Climate adjustment
-        if precip > 1000 and temp > 10:
-            base *= 1.2
-        elif precip < 300:
-            base *= 0.6
-
-        return float(np.clip(base, 0, 0.95))
 
     @staticmethod
     def _get_location_info(
         lat: float, lon: float, elevation: float
-    ) -> Dict[str, Any]:
-        """Get location metadata."""
-        # Simple region classification
+    ) -> dict[str, Any]:
+        """Return coarse location metadata."""
         if lat > 60:
             region = "Arctic/Subarctic"
         elif lat > 35:
@@ -537,16 +650,17 @@ class SoilService:
 
     @staticmethod
     def _timestamp() -> str:
-        """Get current UTC timestamp as ISO string."""
-        from datetime import datetime, timezone
-        return datetime.now(timezone.utc).isoformat()
+        """Return the current UTC timestamp as an ISO string."""
+        from datetime import datetime
+
+        return datetime.now(UTC).isoformat()
 
 
-_service_instance: Optional[SoilService] = None
+_service_instance: SoilService | None = None
 
 
 def get_soil_service() -> SoilService:
-    """Get or create singleton soil service."""
+    """Return the singleton soil service."""
     global _service_instance
     if _service_instance is None:
         _service_instance = SoilService()

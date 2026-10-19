@@ -16,15 +16,20 @@ short_description: Soil health monitoring & disaster risk assessment tool
 
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
-[![React 18](https://img.shields.io/badge/React-18.2-61DAFB?logo=react&logoColor=black)](https://react.dev)
-[![TypeScript 5.3](https://img.shields.io/badge/TypeScript-5.3-3178C6?logo=typescript&logoColor=white)](https://typescriptlang.org)
-[![Vite 5](https://img.shields.io/badge/Vite-5.1-646CFF?logo=vite&logoColor=white)](https://vitejs.dev)
+[![React 18](https://img.shields.io/badge/React-18.3-61DAFB?logo=react&logoColor=black)](https://react.dev)
+[![TypeScript 5](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)](https://typescriptlang.org)
+[![Vite 5](https://img.shields.io/badge/Vite-5.4-646CFF?logo=vite&logoColor=white)](https://vitejs.dev)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-3.4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 TerraWatch is a full-stack geospatial platform that combines soil health analysis with multi-hazard disaster risk assessment. Click any point on the globe to get soil quality scores, erosion estimates, landslide/flood/wildfire/liquefaction risk levels, crop recommendations, and emergency preparedness plans — all computed from live data pulled from USGS, Open-Meteo, and ISRIC SoilGrids. No API keys needed.
 
 > **Live Demo:** [huggingface.co/spaces/teaphile/terrawatch](https://huggingface.co/spaces/teaphile/terrawatch)
+
+> **Verified status:** 162 backend tests pass, `ruff check backend/app/` is clean,
+> and the frontend passes `npm run lint`, `npm run typecheck` and `npm run build`.
+> The API and the bundled production build are exercised together: the FastAPI
+> app serves `frontend/dist` when it exists, so a single container is enough.
 
 ---
 
@@ -78,8 +83,8 @@ TerraWatch is a full-stack geospatial platform that combines soil health analysi
 
 - **USGS earthquake feed** — Background task fetches M2.5+ events from the USGS FDSN API every `EARTHQUAKE_FETCH_INTERVAL` seconds (default 300, configurable). Events displayed as soon as they arrive.
 - **WebSocket alert stream** — Backend monitors incoming earthquake data and pushes alerts for M4.0+ events over a WebSocket connection at `/ws/alerts`. Frontend receives them instantly and appends to the alert feed.
-- **Open-Meteo integration** — Current weather conditions (temperature, humidity, precipitation, wind), climate normals (30-year averages by month), and soil moisture profiles. Data cached with configurable TTL.
-- **ISRIC SoilGrids** — Soil property data (pH, organic carbon, CEC, texture fractions, bulk density, nitrogen) at queried coordinates. Queried at 0–5 cm, 5–15 cm, 15–30 cm depths.
+- **Open-Meteo integration** — Current weather conditions (temperature, humidity, precipitation, wind), archive-based climate normals, recent rainfall totals, and soil-moisture profiles. Each dataset has its own cache TTL, and every fallback is labelled with its `source`.
+- **ISRIC SoilGrids** — Soil property data (pH, organic carbon, CEC, texture fractions, bulk density, nitrogen) at queried coordinates, combined into a 0–30 cm thickness-weighted mean.
 
 ### Weather Dashboard
 
@@ -181,25 +186,24 @@ graph TB
 | HTTP client | httpx (async) | >= 0.26.0 |
 | WebSocket | websockets | >= 12.0 |
 | ML / Numerics | numpy, scikit-learn, joblib | >= 1.26, >= 1.4, >= 1.3 |
-| Geospatial | geopy, shapely | >= 2.4, >= 2.0 |
-| Caching | cachetools (in-memory TTL) | >= 5.3.0 |
-| Serialization | orjson | >= 3.9.0 |
-| Environment | python-dotenv | >= 1.0.0 |
+| Cache / numerics | cachetools, numpy | >= 5.3, >= 1.26 |
+| Testing | pytest, pytest-asyncio, anyio | >= 8.0, >= 0.23, >= 4.0 |
+| Linting | ruff | >= 0.6 |
 | Runtime | Python 3.11+ (Docker: `python:3.11-slim`) | |
 
 ### Frontend
 
 | Component | Package | Version |
 |-----------|---------|---------|
-| UI library | React | ^18.2.0 |
-| Language | TypeScript | ^5.3.3 |
-| Build tool | Vite | ^5.1.0 |
-| Styling | Tailwind CSS | ^3.4.1 |
+| UI library | React | ^18.3 |
+| Language | TypeScript | ^5.9 |
+| Build tool | Vite | ^7.3 |
+| Styling | Tailwind CSS | ^3.4 |
 | Maps | leaflet + react-leaflet | ^1.9.4 / ^4.2.1 |
-| Charts | Recharts | ^2.12.0 |
-| Icons | lucide-react | ^0.344.0 |
-| PostCSS | autoprefixer, postcss | ^10.4.17, ^8.4.35 |
-| Runtime | Node.js 20 (Docker: `node:20-alpine`) | |
+| Charts | Recharts | ^2.15 |
+| Icons | lucide-react | ^0.344+ |
+| Linting | ESLint 10 + typescript-eslint | ^10 / ^8 |
+| Runtime | Node.js 20+ (Docker: `node:20-alpine`) | |
 
 ---
 
@@ -246,14 +250,14 @@ No `.env` file or API keys are required — the app works out of the box with fr
 ```bash
 cd frontend
 
-# Install dependencies
-npm install
+# Install dependencies (lockfile is committed)
+npm ci
 
 # Start the Vite dev server
 npm run dev
 ```
 
-The frontend runs at `http://localhost:5173`. Vite is configured to proxy `/api` and `/ws` requests to `http://localhost:8000`, so both servers work together seamlessly.
+The frontend runs at `http://localhost:5173`. Vite proxies `/api` and `/ws` to `http://localhost:8000` (override with `VITE_API_TARGET`), so both servers work together seamlessly.
 
 ### 4. Open in browser
 
@@ -440,9 +444,20 @@ All primary data sources are free and require no API keys or registration.
 | Source | URL | Data Used | Update Frequency |
 |--------|-----|-----------|-----------------|
 | **USGS Earthquake Hazards** | `earthquake.usgs.gov/fdsnws/event/1` | Real-time seismic events (magnitude, location, depth, felt reports, tsunami flag) | Every 5 min (configurable) |
-| **Open-Meteo** | `api.open-meteo.com/v1` | Current weather, hourly/daily forecasts, climate normals (1991–2020), soil temperature & moisture at 5 depths | Every 30 min (configurable) |
+| **Open-Meteo** | `api.open-meteo.com/v1`, `archive-api.open-meteo.com` | Current weather, recent precipitation, soil moisture at four depths, DEM elevation, and archive-based climate normals | 15 min – 7 days (per data type) |
 | **ISRIC SoilGrids** | `rest.isric.org/soilgrids/v2.0` | Soil properties at 250m resolution — pH (H2O), organic carbon, CEC, texture fractions (sand/silt/clay), bulk density, total nitrogen | On demand, cached 1 hour |
-| **NASA FIRMS** | `firms.modaps.eosdis.nasa.gov` | Active fire/hotspot detection (referenced in architecture) | Optional integration |
+| **NASA FIRMS** | `firms.modaps.eosdis.nasa.gov` | Active fire/hotspot detection (public 24 h feeds, or a MAP_KEY for area queries) | 1 hour (cached) |
+
+### Bundled offline datasets
+
+When an upstream API is unreachable the API degrades to *real bundled data*
+rather than invented numbers:
+
+| File | Content | Source / licence |
+|------|---------|------------------|
+| `backend/app/data/static/elevation_grid.npz` | Global 10 arc-minute topography, 1081 × 2161 `int16`, north-first | [ETOPO1](https://www.ngdc.noaa.gov/mgg/global/) resampled by [`g2e/etopo10`](https://github.com/g2e/etopo10) (public domain) |
+| `backend/app/data/static/koppen_grid.npz` | Köppen-Geiger climate class per 0.5° cell | Beck et al. (2018) via [`koppen-climate-lookup`](https://www.npmjs.com/package/koppen-climate-lookup) (ISC package; classification after Beck et al., CC BY 4.0) |
+| `backend/app/data/static/climate_class_normals.json` | Representative annual temperature, precipitation, humidity and wind for each climate class | Derived from the climate-class literature; used only as a fallback |
 
 Data is fetched via `httpx.AsyncClient` with connection pooling. Responses are cached in-memory using `cachetools.TTLCache` (default TTL: 1 hour, max entries: 1000) to minimize redundant API calls.
 
@@ -455,24 +470,24 @@ All configuration is managed via environment variables (loaded from `.env` file 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `APP_NAME` | `TerraWatch` | Application name (shown in API info) |
-| `APP_VERSION` | `1.0.0` | Version string |
+| `APP_VERSION` | `2.0.0` | Version string |
 | `DEBUG` | `False` | Enable debug mode (verbose logging, auto-reload) |
 | `LOG_LEVEL` | `INFO` | Log level: DEBUG, INFO, WARNING, ERROR |
 | `HOST` | `0.0.0.0` | Server bind address |
 | `PORT` | `8000` | Server bind port (overridden to 7860 on HF Spaces) |
 | `DATABASE_URL` | `sqlite+aiosqlite:///./terrawatch.db` | Async database connection string |
-| `CORS_ORIGINS` | `localhost:3000, localhost:5173, *.hf.space` | Comma-separated allowed origins |
-| `API_SECRET_KEY` | _(empty, open in dev)_ | Secret key for API auth; set via env var in production |
-| `OPENWEATHER_API_KEY` | _(empty)_ | Optional OpenWeatherMap key (fallback source) |
-| `MAPBOX_TOKEN` | _(empty)_ | Optional Mapbox token (not used by default) |
+| `CORS_ORIGINS` | `localhost:3000/5173/4173, 127.0.0.1:5173/4173, *.hf.space` | Comma-separated allowed origins (`*` wildcards supported in hostnames) |
+| `API_AUTH_ENABLED` | `False` | Require an API key on protected routes |
+| `API_SECRET_KEY` | _(empty)_ | API key checked when `API_AUTH_ENABLED=true` |
+| `FIRMS_MAP_KEY` | _(empty)_ | NASA FIRMS key for area fire queries (public 24 h feeds work without it) |
 | `OPEN_METEO_ENABLED` | `True` | Enable Open-Meteo weather integration |
 | `USGS_API_ENABLED` | `True` | Enable USGS earthquake background feed |
-| `CACHE_TTL_SECONDS` | `3600` | Cache entry time-to-live (seconds) |
-| `CACHE_MAX_SIZE` | `1000` | Maximum cache entries before eviction |
+| `CACHE_PERSIST` | `True` | Persist the L2 cache in SQLite across restarts |
+| `CACHE_MAX_SIZE` | `1000` | Maximum in-memory entries per cache tier |
 | `RATE_LIMIT_PER_MINUTE` | `100` | API rate limit per client IP |
-| `EARTHQUAKE_FETCH_INTERVAL` | `300` | Seconds between earthquake data fetches |
-| `WEATHER_FETCH_INTERVAL` | `1800` | Seconds between weather data refreshes |
-| `SATELLITE_FETCH_INTERVAL` | `21600` | Seconds between satellite data checks |
+| `EARTHQUAKE_FETCH_INTERVAL` | `300` | Seconds between USGS earthquake polls |
+| `HTTP_CONNECT_TIMEOUT` | `5` | Upstream connection timeout (seconds) |
+| `HTTP_READ_TIMEOUT` | `12` | Upstream read timeout (seconds) |
 
 ---
 
@@ -581,12 +596,12 @@ TerraWatch is designed to be transparent about the source and quality of every d
 
 | Data Type | Primary Source | Fallback | How to Tell |
 |-----------|---------------|----------|-------------|
-| Soil properties | ISRIC SoilGrids API (250m) | Analytical estimation (latitude heuristics) | `soil_data_source` field |
-| Weather | Open-Meteo API (real-time) | Climate normals (5° grid, IDW interpolation) | `source` field = `"open-meteo"` vs `"estimated"` |
+| Soil properties | ISRIC SoilGrids API (250 m, 0–30 cm weighted mean) | Analytical pedotransfer estimation | `soil_data_source` field |
+| Weather | Open-Meteo API (real-time) | Köppen-Geiger climate-class climatology (0.5°) | `source` field = `"open-meteo"` vs `"estimated"` |
 | Soil moisture | Open-Meteo soil model | DB cache (< 24h) → climate-based estimation | `source` field |
-| Elevation | Open-Meteo Elevation API | Static 5° grid | `elevation_source` in metadata |
+| Elevation | Open-Meteo Elevation API | Bundled ETOPO1 10 arc-minute grid | `elevation_source` in metadata |
 | Slope | 4-point elevation gradient | Heuristic from elevation | `slope_source` in metadata |
-| NDVI | OpenLandMap MODIS (250m) | Land-cover + climate adjustment | `source` field |
+| NDVI | — (no live feed configured) | Land-cover class + climate adjustment | `source` field = `"estimated"` |
 | Earthquakes | USGS real-time feed | None (real data only) | Always real |
 | Active fires | NASA FIRMS | Empty list (requires MAP_KEY) | `source` field |
 
@@ -596,15 +611,20 @@ TerraWatch is designed to be transparent about the source and quality of every d
 > Items marked ✅ are fixed; items marked ⚠️ still apply.
 
 1. ✅ **ML training infrastructure** — A training script (`backend/ml/train_soil_model.py`) now exists to train the RF+XGBoost ensemble from ISRIC SoilGrids data. Until a trained model is deployed, the improved analytical fallback is used (with honest confidence scores and `_validation_status` flag).
-2. ✅ **Elevation & slope** — Elevation is now fetched from the Open-Meteo Elevation API (with a static 5° grid fallback). Slope is computed from a 4-point elevation gradient instead of heuristics.
+2. ✅ **Elevation & slope** — Elevation comes from the Open-Meteo Elevation API, falling back to a real ETOPO1 10 arc-minute grid. Slope is computed from a 5-point elevation gradient.
 3. ⚠️ **Risk models are unvalidated** — Landslide, flood, fire, and liquefaction models use expert-weighted analytical methods. They now carry a `_validation_status: "unvalidated_analytical_model"` field. Validation against historical event inventories is planned.
 4. ⚠️ **No ground truth comparison** — Accuracy metrics are not yet computed, though test suites now verify directional correctness and plausible ranges.
 5. ✅ **NDVI estimation improved** — Fallback NDVI now uses land-cover type and climate normals instead of a crude latitude heuristic.
 6. ✅ **Cache persists across restarts** — A two-tier L1 (memory) + L2 (SQLite) cache is now used. Set `CACHE_PERSIST=false` to disable disk persistence.
-7. ✅ **Weather fallback uses climate normals** — When Open-Meteo is unavailable, a global 5° climate normals grid provides realistic temperature, precipitation, humidity, and wind estimates (no more `precipitation_mm: 0`).
+7. ✅ **Weather fallback uses real climatology** — When Open-Meteo is unavailable, the bundled Köppen-Geiger class grid provides realistic temperature, precipitation, humidity and wind estimates instead of synthetic 5° values.
 8. ✅ **Soil moisture caching** — Successful API fetches are persisted to SQLite; stale cache (< 24h) is used before falling back to climate-based estimation.
-9. ✅ **Security hardened** — `API_SECRET_KEY` auto-generates if missing (with warning), CORS origin defaults to `https://*.hf.space` instead of `*`, and all route inputs are validated with Pydantic `Query` constraints.
+9. ✅ **Security hardened** — API-key auth is opt-in (`API_AUTH_ENABLED`), no secret is ever generated automatically, CORS defaults to explicit origins plus `https://*.hf.space`, and all route inputs are validated with Pydantic `Query` constraints.
 10. ✅ **WebSocket broadcast race condition fixed** — Connection set is copied before iteration.
+11. ⚠️ **Build-tool advisories** — `npm audit` reports advisories in the
+    Tailwind CSS 3 CLI dependency chain (`braces`, `micromatch`, `chokidar`).
+    They affect only the local build/watch tooling; the production image is
+    nginx serving static files and ships no `node_modules`. Clearing them
+    requires the Tailwind 4 migration.
 
 ### Data Quality Endpoint
 

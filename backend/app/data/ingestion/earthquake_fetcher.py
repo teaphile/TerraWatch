@@ -7,11 +7,10 @@ and generates alerts for significant seismic events.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import httpx
-
 from app.services.alert_service import get_alert_service
 from app.services.cache_service import CacheService
 
@@ -29,7 +28,7 @@ class EarthquakeFetcher:
 
     def __init__(self) -> None:
         """Initialize earthquake fetcher."""
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: httpx.AsyncClient | None = None
         self._cache = CacheService(maxsize=100, ttl=300)
         self._seen_events: set = set()
         self._alert_service = get_alert_service()
@@ -45,7 +44,7 @@ class EarthquakeFetcher:
         days: int = 1,
         min_magnitude: float = 2.5,
         limit: int = 100,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Fetch recent earthquakes from USGS.
 
         Args:
@@ -63,7 +62,7 @@ class EarthquakeFetcher:
 
         try:
             client = await self._get_client()
-            end = datetime.now(timezone.utc)
+            end = datetime.now(UTC)
             start = end - timedelta(days=days)
 
             resp = await client.get(
@@ -102,7 +101,7 @@ class EarthquakeFetcher:
         max_lon: float,
         days: int = 7,
         min_magnitude: float = 1.0,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Fetch earthquakes within a bounding box.
 
         Args:
@@ -118,7 +117,7 @@ class EarthquakeFetcher:
         """
         try:
             client = await self._get_client()
-            end = datetime.now(timezone.utc)
+            end = datetime.now(UTC)
             start = end - timedelta(days=days)
 
             resp = await client.get(
@@ -144,7 +143,7 @@ class EarthquakeFetcher:
             logger.error(f"USGS region fetch failed: {e}")
             return []
 
-    def _parse_event(self, feature: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _parse_event(self, feature: dict[str, Any]) -> dict[str, Any] | None:
         """Parse USGS GeoJSON feature into event dict."""
         try:
             props = feature.get("properties", {})
@@ -154,7 +153,7 @@ class EarthquakeFetcher:
             event_time = props.get("time")
             if event_time:
                 event_time = datetime.fromtimestamp(
-                    event_time / 1000, tz=timezone.utc
+                    event_time / 1000, tz=UTC
                 ).isoformat()
 
             return {
@@ -176,7 +175,7 @@ class EarthquakeFetcher:
             logger.warning(f"Failed to parse earthquake event: {e}")
             return None
 
-    def _check_alert(self, event: Dict[str, Any]) -> None:
+    def _check_alert(self, event: dict[str, Any]) -> None:
         """Create alert for significant earthquakes."""
         event_id = event.get("event_id", "")
         if event_id in self._seen_events:
@@ -220,7 +219,7 @@ class EarthquakeFetcher:
             await self._client.aclose()
 
 
-_fetcher_instance: Optional[EarthquakeFetcher] = None
+_fetcher_instance: EarthquakeFetcher | None = None
 
 
 def get_earthquake_fetcher() -> EarthquakeFetcher:

@@ -2,16 +2,17 @@
 Tests for disaster risk models.
 """
 
-import pytest
-import sys
 import os
+import sys
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from app.models.landslide_model import LandslideModel, get_landslide_model
-from app.models.flood_model import FloodModel, get_flood_model
-from app.models.liquefaction_model import LiquefactionModel, get_liquefaction_model
-from app.models.fire_model import FireModel, get_fire_model
+from app.models.fire_model import get_fire_model
+from app.models.flood_model import get_flood_model
+from app.models.landslide_model import get_landslide_model
+from app.models.liquefaction_model import get_liquefaction_model
 
 
 class TestLandslideModel:

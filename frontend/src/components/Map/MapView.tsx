@@ -5,12 +5,21 @@ import {
   Marker,
   Popup,
   CircleMarker,
+  GeoJSON,
+  Pane,
   useMapEvents,
   ZoomControl,
   useMap,
 } from 'react-leaflet';
+import { feature } from 'topojson-client';
+import type { Topology, GeometryCollection } from 'topojson-specification';
+import type { FeatureCollection, Geometry } from 'geojson';
+import worldTopology from 'world-atlas/countries-110m.json';
 import L from 'leaflet';
 import type { Map as LeafletMap } from 'leaflet';
+import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
+import markerIcon from 'leaflet/dist/images/marker-icon.png';
+import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 import type { EarthquakeEvent, SoilAnalysis, RiskAssessment } from '../../types';
 import MapLegend from './Legend';
 import LayerControl from './LayerControl';
@@ -18,10 +27,17 @@ import LayerControl from './LayerControl';
 // Fix default marker icon
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+  iconRetinaUrl: markerIcon2x,
+  iconUrl: markerIcon,
+  shadowUrl: markerShadow,
 });
+
+// Natural Earth world outlines, bundled as a vector fallback so the map is
+// still usable when the external raster tile CDN is blocked or offline.
+const worldGeo = feature(
+  worldTopology as unknown as Topology,
+  (worldTopology as unknown as Topology).objects.countries as GeometryCollection,
+) as unknown as FeatureCollection<Geometry>;
 
 interface MapViewProps {
   earthquakes: EarthquakeEvent[];
@@ -120,9 +136,24 @@ const MapView: React.FC<MapViewProps> = ({
         <ClickHandler onClick={onMapClick} />
         <FlyToPoint point={selectedPoint} />
 
+        {/* Vector fallback rendered below the raster tiles: visible only
+            where tiles fail to load. */}
+        <Pane name="offline-base" style={{ zIndex: 150 }}>
+          <GeoJSON
+            data={worldGeo}
+            pane="offline-base"
+            style={{
+              color: theme === 'dark' ? '#2d333b' : '#d0d7de',
+              weight: 0.5,
+              fillColor: theme === 'dark' ? '#161b22' : '#eaeef2',
+              fillOpacity: 1,
+            }}
+          />
+        </Pane>
+
         {/* Base tile layer */}
         <TileLayer
-          attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+          attribution='&copy; <a href="https://carto.com/">CARTO</a> | Boundaries &copy; Natural Earth'
           url={
             theme === 'dark'
               ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'

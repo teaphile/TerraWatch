@@ -2,14 +2,15 @@
 Tests for soil analysis models.
 """
 
-import pytest
-import sys
 import os
+import sys
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from app.models.soil_model import SoilPredictionModel, get_soil_model
-from app.models.erosion_model import ErosionModel, get_erosion_model
+from app.models.erosion_model import get_erosion_model
+from app.models.soil_model import get_soil_model
 
 
 class TestSoilModel:

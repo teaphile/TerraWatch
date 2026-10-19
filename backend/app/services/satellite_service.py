@@ -1,138 +1,76 @@
-"""Satellite data processing service.
+"""Vegetation-index estimation service.
 
-Provides NDVI data from real satellite sources when available,
-with transparent fallback to analytical estimation.
+NDVI is a required input for the erosion and wildfire models. This project
+does not ship a live satellite feed: MODIS/Landsat products are distributed
+as GeoTIFF/NetCDF assets that need dedicated tiling and raster tooling, and
+the public Web Coverage Service endpoints that used to provide point
+samples are unreliable.
 
-Data source priority:
-1. OpenLandMap NDVI (free, no key required, MODIS-derived)
-2. Analytical estimation (latitude + land cover heuristics) -- clearly marked
+Rather than pretend to fetch imagery, this service computes a transparent
+estimate from land-cover class and the bundled Köppen-Geiger climatology.
+Every result is tagged ``source="estimated"`` with an explicit warning so
+the API's data-quality reporting stays truthful.
+
+To enable real NDVI later, implement a fetcher here that returns
+``{"ndvi": float, "source": "modis", ...}`` and call it from :meth:`get_ndvi`
+before falling back to :meth:`estimate_ndvi`.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Optional
-
-import httpx
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# OpenLandMap provides open MODIS-derived NDVI data
-OPENLANDMAP_WCS = "https://geoserver.openlandmap.org/geoserver/ows"
+# Typical growing-season NDVI by land-cover class.
+_NDVI_BY_LAND_COVER = {
+    "forest": 0.70,
+    "dense_forest": 0.80,
+    "grassland": 0.45,
+    "cropland": 0.50,
+    "shrubland": 0.35,
+    "wetland": 0.55,
+    "bare": 0.10,
+    "urban": 0.15,
+    "water": -0.05,
+}
 
 
 class SatelliteService:
-    """Service for satellite data processing.
+    """Estimate vegetation indices when no satellite feed is configured."""
 
-    Provides NDVI calculation and satellite imagery integration.
-    Attempts to fetch from real satellite data APIs first,
-    falls back to analytical estimation with clear warnings.
-    """
-
-    def __init__(self) -> None:
-        self._client: Optional[httpx.AsyncClient] = None
-
-    async def _get_client(self) -> httpx.AsyncClient:
-        if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(timeout=15.0)
-        return self._client
-
-    async def get_ndvi(self, latitude: float, longitude: float) -> Dict[str, Any]:
-        """Get NDVI for a location.
-
-        Tries real satellite data sources first, falls back to estimation.
-        """
-        # Try OpenLandMap MODIS NDVI first
-        try:
-            result = await self._fetch_openlandmap_ndvi(latitude, longitude)
-            if result is not None:
-                return result
-        except Exception as e:
-            logger.warning(f"OpenLandMap NDVI fetch failed: {e}")
-
-        # Fall back to analytical estimation
-        return self._estimate_ndvi(latitude, longitude)
-
-    async def _fetch_openlandmap_ndvi(
-        self, latitude: float, longitude: float
-    ) -> Optional[Dict[str, Any]]:
-        """Fetch MODIS-derived NDVI from OpenLandMap.
-
-        OpenLandMap serves global MODIS NDVI composites via OGC WCS.
-        Returns None if unavailable.
-        """
-        client = await self._get_client()
-        try:
-            resp = await client.get(
-                OPENLANDMAP_WCS,
-                params={
-                    "service": "WCS",
-                    "version": "2.0.1",
-                    "request": "GetCoverage",
-                    "CoverageId": "modis_ndvi_250m",
-                    "subset": f"Long({longitude - 0.005},{longitude + 0.005})",
-                    "subset2": f"Lat({latitude - 0.005},{latitude + 0.005})",
-                    "format": "application/json",
-                },
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                ndvi_value = self._parse_openlandmap_ndvi(data)
-                if ndvi_value is not None:
-                    return {
-                        "ndvi": round(max(0, min(1, ndvi_value)), 3),
-                        "source": "openlandmap_modis",
-                        "resolution_m": 250,
-                        "_source_detail": "MODIS NDVI 250m composite via OpenLandMap",
-                    }
-        except Exception as e:
-            logger.debug(f"OpenLandMap WCS request failed: {e}")
-
-        return None
-
-    @staticmethod
-    def _parse_openlandmap_ndvi(data: Dict[str, Any]) -> Optional[float]:
-        """Parse NDVI value from OpenLandMap WCS response."""
-        try:
-            if isinstance(data, dict):
-                values = data.get("values", data.get("data", []))
-                if isinstance(values, list) and values:
-                    val = values[0]
-                    if isinstance(val, (int, float)):
-                        return val / 10000.0 if val > 1 else val
-            return None
-        except (KeyError, IndexError, TypeError):
-            return None
-
-    @staticmethod
-    def _estimate_ndvi(
+    async def get_ndvi(
+        self,
         latitude: float,
         longitude: float,
         land_cover: str = "unknown",
-    ) -> Dict[str, Any]:
-        """Estimate NDVI from land cover type and climate context.
+    ) -> dict[str, Any]:
+        """Return NDVI for a location, with source attribution."""
+        return self.estimate_ndvi(latitude, longitude, land_cover)
 
-        Uses land cover as the primary indicator (much more meaningful
-        than latitude alone), with seasonal/climate adjustments from
-        the climate normals dataset.
+    def estimate_ndvi(
+        self,
+        latitude: float,
+        longitude: float,
+        land_cover: str = "unknown",
+    ) -> dict[str, Any]:
+        """Estimate NDVI from land cover, precipitation and temperature.
+
+        Land cover is the dominant control; very wet and very dry climates
+        push the value up or down respectively.
         """
-        # Land-cover-based NDVI (primary factor)
-        ndvi_by_cover = {
-            "forest": 0.70, "dense_forest": 0.80,
-            "grassland": 0.45, "cropland": 0.50,
-            "shrubland": 0.35, "wetland": 0.55,
-            "bare": 0.10, "urban": 0.15, "water": -0.05,
-        }
-        base_ndvi = ndvi_by_cover.get(land_cover.lower(), 0.40)
+        base_ndvi = _NDVI_BY_LAND_COVER.get(land_cover.lower(), 0.40)
+        climate_class: str | None = None
 
-        # Climate adjustment from normals
         try:
             from app.services.weather_service import _interpolate_climate
+
             climate = _interpolate_climate(latitude, longitude)
             if climate:
-                precip = climate.get("p", 800)
-                temp = climate.get("t", 15)
-                # Wetter & warmer → greener (up to a point)
+                climate_class = climate.get("_class")
+                precip = float(climate.get("p", 800))
+                temp = float(climate.get("t", 15))
                 if precip > 1200 and temp > 15:
                     base_ndvi *= 1.15
                 elif precip > 800 and temp > 10:
@@ -141,31 +79,32 @@ class SatelliteService:
                     base_ndvi *= 0.65
                 elif precip < 500:
                     base_ndvi *= 0.80
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("NDVI climate adjustment skipped: %s", exc)
 
         ndvi = max(-0.1, min(0.95, base_ndvi))
 
         return {
             "ndvi": round(ndvi, 3),
             "source": "estimated",
+            "land_cover": land_cover,
+            "climate_class": climate_class,
             "_warning": (
-                f"NDVI estimated from land cover type ('{land_cover}') and "
-                "climate normals. NOT from real satellite imagery. "
-                "OpenLandMap API was unavailable."
+                f"NDVI estimated from land cover ('{land_cover}') and "
+                "Köppen-Geiger climate normals. No live satellite NDVI "
+                "feed is configured."
             ),
         }
 
     async def close(self) -> None:
-        if self._client and not self._client.is_closed:
-            await self._client.aclose()
+        """Release resources (no-op; kept for lifecycle symmetry)."""
 
 
-_instance: Optional[SatelliteService] = None
+_instance: SatelliteService | None = None
 
 
 def get_satellite_service() -> SatelliteService:
-    """Get singleton satellite service."""
+    """Get the singleton satellite service."""
     global _instance
     if _instance is None:
         _instance = SatelliteService()

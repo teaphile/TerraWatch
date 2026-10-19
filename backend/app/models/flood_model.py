@@ -7,8 +7,7 @@ to estimate flood risk and inundation potential.
 from __future__ import annotations
 
 import logging
-import math
-from typing import Any, Dict, Optional
+from typing import Any
 
 import numpy as np
 
@@ -39,7 +38,7 @@ class FloodModel:
         land_cover: str = "cropland",
         ndvi: float = 0.5,
         drainage_density: float = 2.0,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Predict flood risk for a location.
 
         Args:
@@ -289,7 +288,7 @@ class FloodModel:
             return 5
         return 2
 
-    def _get_contributing_factors(self, scores: Dict[str, float]) -> list:
+    def _get_contributing_factors(self, scores: dict[str, float]) -> list:
         """Get top contributing factors."""
         factor_names = {
             "terrain": "low_elevation_flat_terrain",
@@ -303,7 +302,7 @@ class FloodModel:
         return [factor_names[k] for k, v in sorted_factors[:3] if v > 0.3]
 
 
-_model_instance: Optional[FloodModel] = None
+_model_instance: FloodModel | None = None
 
 
 def get_flood_model() -> FloodModel:

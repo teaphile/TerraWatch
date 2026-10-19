@@ -213,11 +213,11 @@ const SoilAnalysisPanel: React.FC<SoilAnalysisPanelProps> = ({ analysis }) => {
                 <div className="flex-1 bg-surface-600 rounded-full h-1.5">
                   <div
                     className="bg-cyan-400 h-1.5 rounded-full"
-                    style={{ width: `${Math.min(100, (value ?? 0) * 100 / 0.5)}%` }}
+                    style={{ width: `${Math.min(100, (value ?? 0) * 2)}%` }}
                   />
                 </div>
                 <span className="text-xs text-text-primary w-14 text-right">
-                  {value != null ? `${(value * 100).toFixed(0)}%` : 'N/A'}
+                  {value != null ? `${value.toFixed(0)}%` : 'N/A'}
                 </span>
               </div>
             ))}
