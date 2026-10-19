@@ -2,13 +2,14 @@
 Tests for GIS utility functions.
 """
 
-import pytest
-import sys
 import os
+import sys
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from app.utils.geo_utils import haversine, validate_coordinates, deg_to_dms
+from app.utils.geo_utils import deg_to_dms, haversine, validate_coordinates
 
 
 class TestHaversine:
@@ -33,7 +34,7 @@ class TestHaversine:
 
 class TestValidateCoordinates:
     def test_valid_coords(self):
-        valid, msg = validate_coordinates(45.0, -90.0)
+        valid, _msg = validate_coordinates(45.0, -90.0)
         assert valid is True
 
     def test_boundary_coords(self):

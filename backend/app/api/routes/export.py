@@ -5,13 +5,12 @@ from __future__ import annotations
 import csv
 import io
 import json
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
-from app.services.soil_service import get_soil_service
 from app.services.disaster_service import get_disaster_service
+from app.services.soil_service import get_soil_service
 
 router = APIRouter(prefix="/export", tags=["Data Export"])
 
@@ -59,7 +58,7 @@ async def export_soil_csv(
             headers={"Content-Disposition": f"attachment; filename=soil_analysis_{lat}_{lon}.csv"},
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/soil/geojson")
@@ -93,7 +92,7 @@ async def export_soil_geojson(
             headers={"Content-Disposition": f"attachment; filename=soil_{lat}_{lon}.geojson"},
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/risk/geojson")
@@ -126,7 +125,7 @@ async def export_risk_geojson(
             headers={"Content-Disposition": f"attachment; filename=risk_{lat}_{lon}.geojson"},
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/report")
@@ -167,4 +166,4 @@ async def export_full_report(
             headers={"Content-Disposition": f"attachment; filename=terrawatch_report_{lat}_{lon}.json"},
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

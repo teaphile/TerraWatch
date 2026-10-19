@@ -1,6 +1,6 @@
 """Input validation using Pydantic models."""
 from __future__ import annotations
-from typing import Any, Optional, List
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -14,7 +14,7 @@ class SoilAnalysisInput(BaseModel):
     """Input for soil analysis endpoint."""
     lat: float = Field(..., ge=-90, le=90)
     lon: float = Field(..., ge=-180, le=180)
-    elevation: Optional[float] = Field(None, ge=-500, le=9000)
+    elevation: float | None = Field(None, ge=-500, le=9000)
     land_cover: str = Field("cropland", description="Land cover type")
 
     @field_validator("land_cover")
@@ -36,7 +36,7 @@ class RiskAssessmentInput(BaseModel):
 class AreaAnalysisInput(BaseModel):
     """Input for area analysis (GeoJSON polygon)."""
     type: str = Field("Polygon")
-    coordinates: List[List[List[float]]] = Field(..., description="GeoJSON polygon coordinates")
+    coordinates: list[list[list[float]]] = Field(..., description="GeoJSON polygon coordinates")
 
     @field_validator("type")
     @classmethod
@@ -48,6 +48,6 @@ class AreaAnalysisInput(BaseModel):
 
 class AlertQueryInput(BaseModel):
     """Input for alert queries."""
-    alert_type: Optional[str] = None
-    severity: Optional[str] = None
+    alert_type: str | None = None
+    severity: str | None = None
     limit: int = Field(50, ge=1, le=500)

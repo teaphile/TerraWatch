@@ -7,7 +7,6 @@ values instead of hardcoded zeros.
 from __future__ import annotations
 
 import pytest
-
 from app.services.weather_service import WeatherService, _interpolate_climate
 
 

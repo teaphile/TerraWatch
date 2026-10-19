@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Set
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -15,7 +14,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["WebSocket"])
 
 # Active WebSocket connections
-_connections: Set[WebSocket] = set()
+_connections: set[WebSocket] = set()
 
 
 async def broadcast_alert(alert: dict) -> None:
@@ -69,7 +68,7 @@ async def websocket_alerts(websocket: WebSocket) -> None:
                 # Handle ping
                 if data == "ping":
                     await websocket.send_text(json.dumps({"type": "pong"}))
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 # Send heartbeat
                 try:
                     await websocket.send_text(json.dumps({"type": "heartbeat"}))

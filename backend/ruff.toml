@@ -1,0 +1,31 @@
+# Ruff configuration for the TerraWatch backend.
+#
+# The codebase deliberately uses broad ``except Exception`` guards at every
+# network/data boundary so a failed upstream cannot take down an endpoint;
+# that pattern is reviewed by hand instead of being linted (BLE001/S110 are
+# therefore not enabled).
+
+line-length = 100
+target-version = "py311"
+src = ["app", "tests"]
+
+[lint]
+select = [
+    "E4",   # import errors
+    "E7",   # statement errors
+    "E9",   # runtime errors
+    "F",    # pyflakes
+    "W",    # pycodestyle warnings
+    "I",    # import sorting
+    "UP",   # pyupgrade
+    "B",    # bugbear
+    "SIM",  # simplify
+    "RUF",  # ruff-specific
+    "ASYNC",# async correctness
+]
+ignore = [
+    "B008",    # FastAPI Depends()/Query() in defaults is the documented API
+    "RUF001",  # ambiguous unicode (degree signs, multiplication signs)
+    "RUF002",
+    "RUF003",
+]

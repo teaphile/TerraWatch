@@ -11,8 +11,6 @@ are used as ground truth (sourced from soilgrids.org).
 from __future__ import annotations
 
 import pytest
-import numpy as np
-
 from app.models.soil_model import get_soil_model
 
 # Reference data: approximate known soil properties from ISRIC SoilGrids

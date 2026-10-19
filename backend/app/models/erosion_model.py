@@ -17,9 +17,7 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple
-
-import numpy as np
+from typing import ClassVar
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +41,7 @@ class ErosionModel:
     using the Revised Universal Soil Loss Equation.
     """
 
-    RISK_THRESHOLDS = {
+    RISK_THRESHOLDS: ClassVar[dict] = {
         "Very Low": (0, 2),
         "Low": (2, 5),
         "Moderate": (5, 10),
@@ -127,8 +125,6 @@ class ErosionModel:
         Uses the Williams (1995) modified equation:
         K = f_csand * f_cl_si * f_orgc * f_hisand
         """
-        organic_matter_pct = organic_carbon_pct * 1.724
-
         # Factor for high sand content
         f_csand = (
             0.2
@@ -177,10 +173,11 @@ class ErosionModel:
 
         L = (slope_length_m / 22.13) ** m
 
-        if slope_pct < 9:
-            S = 10.8 * sin_slope + 0.03
-        else:
-            S = 16.8 * sin_slope - 0.50
+        S = (
+            10.8 * sin_slope + 0.03
+            if slope_pct < 9
+            else 16.8 * sin_slope - 0.50
+        )
 
         LS = L * S
         return max(0.01, min(LS, 100))
@@ -250,7 +247,7 @@ class ErosionModel:
 
 
 # Singleton
-_model_instance: Optional[ErosionModel] = None
+_model_instance: ErosionModel | None = None
 
 
 def get_erosion_model() -> ErosionModel:

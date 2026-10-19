@@ -5,8 +5,8 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 
-from app.services.disaster_service import get_disaster_service
 from app.data.ingestion.earthquake_fetcher import get_earthquake_fetcher
+from app.services.disaster_service import get_disaster_service
 
 router = APIRouter(prefix="/risk", tags=["Risk Assessment"])
 
@@ -41,7 +41,7 @@ async def assess_all_risks(
 
         return response
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/landslide")
@@ -59,7 +59,7 @@ async def assess_landslide(
         result = await service.assess_landslide(lat, lon, radius)
         return {"status": "success", "data": result}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/flood")
@@ -76,7 +76,7 @@ async def assess_flood(
         result = await service.assess_flood(lat, lon)
         return {"status": "success", "data": result}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/earthquake/recent")
@@ -100,4 +100,4 @@ async def get_recent_earthquakes(
             },
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

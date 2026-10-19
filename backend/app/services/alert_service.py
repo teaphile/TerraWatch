@@ -9,8 +9,9 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import deque
-from datetime import datetime, timezone, timedelta
-from typing import Any, Callable, Dict, List, Optional, Set
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +30,9 @@ class AlertService:
             max_history: Maximum number of alerts to keep in history.
         """
         self._alerts: deque = deque(maxlen=max_history)
-        self._active_alerts: Dict[str, Dict[str, Any]] = {}
-        self._subscribers: Set[Callable] = set()
+        self._active_alerts: dict[str, dict[str, Any]] = {}
+        self._broadcast_tasks: set[asyncio.Task] = set()
+        self._subscribers: set[Callable] = set()
         self._alert_counter = 0
 
     def create_alert(
@@ -39,12 +41,12 @@ class AlertService:
         severity: str,
         title: str,
         description: str = "",
-        latitude: Optional[float] = None,
-        longitude: Optional[float] = None,
-        radius_km: Optional[float] = None,
-        data: Optional[Dict[str, Any]] = None,
+        latitude: float | None = None,
+        longitude: float | None = None,
+        radius_km: float | None = None,
+        data: dict[str, Any] | None = None,
         ttl_hours: float = 24,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Create a new alert.
 
         Args:
@@ -62,7 +64,7 @@ class AlertService:
             Created alert dictionary.
         """
         self._alert_counter += 1
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         alert = {
             "id": f"alert-{self._alert_counter:06d}",
@@ -82,8 +84,11 @@ class AlertService:
         self._alerts.appendleft(alert)
         self._active_alerts[alert["id"]] = alert
 
-        # Broadcast asynchronously
-        asyncio.ensure_future(self._broadcast(alert))
+        # Broadcast asynchronously. Keep a reference so the task is not
+        # garbage-collected before it runs.
+        task = asyncio.ensure_future(self._broadcast(alert))
+        self._broadcast_tasks.add(task)
+        task.add_done_callback(self._broadcast_tasks.discard)
 
         logger.info(
             f"Alert created: [{severity.upper()}] {title}",
@@ -94,10 +99,10 @@ class AlertService:
 
     def get_active_alerts(
         self,
-        alert_type: Optional[str] = None,
-        severity: Optional[str] = None,
+        alert_type: str | None = None,
+        severity: str | None = None,
         limit: int = 50,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get currently active alerts.
 
         Args:
@@ -128,8 +133,8 @@ class AlertService:
     def get_alert_history(
         self,
         limit: int = 100,
-        alert_type: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+        alert_type: str | None = None,
+    ) -> list[dict[str, Any]]:
         """Get alert history.
 
         Args:
@@ -171,7 +176,7 @@ class AlertService:
         """Unsubscribe from alert broadcasts."""
         self._subscribers.discard(callback)
 
-    async def _broadcast(self, alert: Dict[str, Any]) -> None:
+    async def _broadcast(self, alert: dict[str, Any]) -> None:
         """Broadcast alert to all subscribers."""
         for callback in list(self._subscribers):
             try:
@@ -184,7 +189,7 @@ class AlertService:
 
     def _expire_alerts(self) -> None:
         """Remove expired alerts from active set."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         expired = [
             aid for aid, alert in self._active_alerts.items()
             if alert.get("expires_at", "") < now
@@ -194,7 +199,7 @@ class AlertService:
             del self._active_alerts[aid]
 
     @property
-    def stats(self) -> Dict[str, Any]:
+    def stats(self) -> dict[str, Any]:
         """Get alert statistics."""
         self._expire_alerts()
         return {
@@ -204,7 +209,7 @@ class AlertService:
         }
 
 
-_service_instance: Optional[AlertService] = None
+_service_instance: AlertService | None = None
 
 
 def get_alert_service() -> AlertService:

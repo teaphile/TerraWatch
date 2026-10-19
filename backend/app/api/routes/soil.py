@@ -58,7 +58,7 @@ async def analyze_soil(
 
         return response
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/moisture")
@@ -75,4 +75,4 @@ async def get_soil_moisture(
         result = await weather.get_soil_moisture(lat, lon)
         return {"status": "success", "data": result}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

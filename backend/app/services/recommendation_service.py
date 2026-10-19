@@ -7,7 +7,7 @@ restoration recommendations based on soil and risk analysis.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, ClassVar
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ class RecommendationService:
     """
 
     # Crop suitability database
-    CROP_DATABASE = {
+    CROP_DATABASE: ClassVar[dict] = {
         "rice": {"ph_range": (5.5, 7.0), "moisture": "high", "texture": ["Clay", "Silty Clay", "Clay Loam"], "temp_range": (20, 35)},
         "wheat": {"ph_range": (6.0, 7.5), "moisture": "moderate", "texture": ["Loam", "Silt Loam", "Clay Loam"], "temp_range": (10, 25)},
         "corn": {"ph_range": (5.8, 7.0), "moisture": "moderate", "texture": ["Loam", "Sandy Loam", "Silt Loam"], "temp_range": (18, 32)},
@@ -37,9 +37,9 @@ class RecommendationService:
 
     def get_agricultural_recommendations(
         self,
-        soil_analysis: Dict[str, Any],
-        climate: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        soil_analysis: dict[str, Any],
+        climate: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Generate agricultural recommendations based on soil analysis.
 
         Args:
@@ -83,8 +83,8 @@ class RecommendationService:
         }
 
     def get_disaster_recommendations(
-        self, risk_assessment: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, risk_assessment: dict[str, Any]
+    ) -> dict[str, Any]:
         """Generate disaster preparedness recommendations.
 
         Args:
@@ -138,9 +138,9 @@ class RecommendationService:
 
     def get_environmental_recommendations(
         self,
-        soil_analysis: Dict[str, Any],
-        risk_assessment: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        soil_analysis: dict[str, Any],
+        risk_assessment: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Generate environmental restoration suggestions.
 
         Args:
@@ -201,7 +201,7 @@ class RecommendationService:
 
     def _find_suitable_crops(
         self, ph: float, texture: str, moisture: float, temp: float
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Find suitable crops for given soil conditions."""
         suitable = []
 
@@ -243,7 +243,7 @@ class RecommendationService:
 
     def _recommend_fertilizer(
         self, ph: float, oc: float, nitrogen: float, texture: str
-    ) -> List[Dict[str, str]]:
+    ) -> list[dict[str, str]]:
         """Recommend fertilizers based on soil deficiencies."""
         recs = []
 
@@ -297,7 +297,7 @@ class RecommendationService:
 
     def _recommend_irrigation(
         self, moisture: float, texture: str, temp: float
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Recommend irrigation schedule."""
         # Water holding capacity by texture
         whc = {
@@ -336,7 +336,7 @@ class RecommendationService:
 
     def _recommend_amendments(
         self, ph: float, oc: float, texture: str
-    ) -> List[Dict[str, str]]:
+    ) -> list[dict[str, str]]:
         """Recommend soil amendments."""
         amendments = []
 
@@ -363,7 +363,7 @@ class RecommendationService:
 
         return amendments
 
-    def _landslide_recommendations(self, risk: Dict) -> List[Dict]:
+    def _landslide_recommendations(self, risk: dict) -> list[dict]:
         """Generate landslide-specific recommendations."""
         return [{
             "category": "landslide",
@@ -380,7 +380,7 @@ class RecommendationService:
             ],
         }]
 
-    def _flood_recommendations(self, risk: Dict) -> List[Dict]:
+    def _flood_recommendations(self, risk: dict) -> list[dict]:
         """Generate flood-specific recommendations."""
         return [{
             "category": "flood",
@@ -398,7 +398,7 @@ class RecommendationService:
             ],
         }]
 
-    def _liquefaction_recommendations(self, risk: Dict) -> List[Dict]:
+    def _liquefaction_recommendations(self, risk: dict) -> list[dict]:
         """Generate liquefaction-specific recommendations."""
         return [{
             "category": "earthquake_liquefaction",
@@ -414,7 +414,7 @@ class RecommendationService:
             ],
         }]
 
-    def _wildfire_recommendations(self, risk: Dict) -> List[Dict]:
+    def _wildfire_recommendations(self, risk: dict) -> list[dict]:
         """Generate wildfire-specific recommendations."""
         return [{
             "category": "wildfire",
@@ -444,8 +444,8 @@ class RecommendationService:
         return "Maximum"
 
     def _suggest_tree_species(
-        self, props: Dict, climate: Dict
-    ) -> List[str]:
+        self, props: dict, climate: dict
+    ) -> list[str]:
         """Suggest tree species for reforestation."""
         temp = climate.get("mean_annual_temp_c", climate.get("current_weather", {}).get("temperature_c", 20))
 
@@ -458,8 +458,8 @@ class RecommendationService:
         return ["Arctic Willow", "Dwarf Birch", "Black Spruce"]
 
     def _remediation_strategies(
-        self, props: Dict, health: Dict
-    ) -> List[str]:
+        self, props: dict, health: dict
+    ) -> list[str]:
         """Generate soil remediation strategies."""
         strategies = []
         ph = props.get("ph", {}).get("value", 7)
@@ -483,10 +483,10 @@ class RecommendationService:
 
     def _generate_summary(
         self,
-        crops: List[Dict],
-        fertilizer: List[Dict],
-        irrigation: Dict,
-        amendments: List[Dict],
+        crops: list[dict],
+        fertilizer: list[dict],
+        irrigation: dict,
+        amendments: list[dict],
     ) -> str:
         """Generate a text summary of recommendations."""
         parts = []
@@ -508,7 +508,7 @@ class RecommendationService:
         return " ".join(parts)
 
 
-_service_instance: Optional[RecommendationService] = None
+_service_instance: RecommendationService | None = None
 
 
 def get_recommendation_service() -> RecommendationService:

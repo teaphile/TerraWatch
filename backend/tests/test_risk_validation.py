@@ -10,10 +10,9 @@ Tests verify directional correctness rather than exact values.
 from __future__ import annotations
 
 import pytest
-
-from app.models.landslide_model import get_landslide_model
-from app.models.flood_model import get_flood_model
 from app.models.fire_model import get_fire_model
+from app.models.flood_model import get_flood_model
+from app.models.landslide_model import get_landslide_model
 
 
 @pytest.fixture

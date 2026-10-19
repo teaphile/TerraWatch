@@ -1,0 +1,226 @@
+{
+  "_meta": {
+    "description": "Representative annual climatology for each K\u00f6ppen-Geiger class. The bundled grid stores only the class of each 0.5\u00b0 cell, so these values describe the class rather than a specific location. Used only as an offline fallback when the live Open-Meteo API cannot be reached; mountains and coasts can deviate substantially.",
+    "classification": "K\u00f6ppen-Geiger present-day map (Beck et al. 2018, CC BY 4.0), via koppen-climate-lookup 2.0.0",
+    "resolution_degrees": 0.5,
+    "fields": {
+      "mean_annual_temp_c": "mean annual air temperature, \u00b0C",
+      "mean_annual_precip_mm": "mean annual precipitation, mm",
+      "humidity_pct": "typical relative humidity, %",
+      "wind_speed_kmh": "typical 10 m wind speed, km/h",
+      "seasonal_amplitude_c": "half of the warmest-to-coldest monthly swing, \u00b0C"
+    }
+  },
+  "classes": {
+    "Af": {
+      "mean_annual_temp_c": 26.0,
+      "mean_annual_precip_mm": 2600,
+      "humidity_pct": 88,
+      "wind_speed_kmh": 9,
+      "seasonal_amplitude_c": 1.0
+    },
+    "Am": {
+      "mean_annual_temp_c": 26.5,
+      "mean_annual_precip_mm": 2200,
+      "humidity_pct": 86,
+      "wind_speed_kmh": 9,
+      "seasonal_amplitude_c": 2.0
+    },
+    "As": {
+      "mean_annual_temp_c": 25.5,
+      "mean_annual_precip_mm": 1400,
+      "humidity_pct": 80,
+      "wind_speed_kmh": 10,
+      "seasonal_amplitude_c": 3.0
+    },
+    "Aw": {
+      "mean_annual_temp_c": 25.5,
+      "mean_annual_precip_mm": 1200,
+      "humidity_pct": 75,
+      "wind_speed_kmh": 10,
+      "seasonal_amplitude_c": 4.0
+    },
+    "BWh": {
+      "mean_annual_temp_c": 25.5,
+      "mean_annual_precip_mm": 80,
+      "humidity_pct": 30,
+      "wind_speed_kmh": 13,
+      "seasonal_amplitude_c": 12.0
+    },
+    "BWk": {
+      "mean_annual_temp_c": 18.0,
+      "mean_annual_precip_mm": 120,
+      "humidity_pct": 32,
+      "wind_speed_kmh": 13,
+      "seasonal_amplitude_c": 15.0
+    },
+    "BSh": {
+      "mean_annual_temp_c": 24.5,
+      "mean_annual_precip_mm": 480,
+      "humidity_pct": 45,
+      "wind_speed_kmh": 12,
+      "seasonal_amplitude_c": 9.0
+    },
+    "BSk": {
+      "mean_annual_temp_c": 13.5,
+      "mean_annual_precip_mm": 330,
+      "humidity_pct": 48,
+      "wind_speed_kmh": 12,
+      "seasonal_amplitude_c": 16.0
+    },
+    "Cfa": {
+      "mean_annual_temp_c": 15.5,
+      "mean_annual_precip_mm": 1150,
+      "humidity_pct": 72,
+      "wind_speed_kmh": 11,
+      "seasonal_amplitude_c": 14.0
+    },
+    "Cfb": {
+      "mean_annual_temp_c": 11.5,
+      "mean_annual_precip_mm": 900,
+      "humidity_pct": 75,
+      "wind_speed_kmh": 13,
+      "seasonal_amplitude_c": 9.0
+    },
+    "Cfc": {
+      "mean_annual_temp_c": 9.0,
+      "mean_annual_precip_mm": 1400,
+      "humidity_pct": 80,
+      "wind_speed_kmh": 15,
+      "seasonal_amplitude_c": 6.0
+    },
+    "Csa": {
+      "mean_annual_temp_c": 17.0,
+      "mean_annual_precip_mm": 600,
+      "humidity_pct": 58,
+      "wind_speed_kmh": 12,
+      "seasonal_amplitude_c": 15.0
+    },
+    "Csb": {
+      "mean_annual_temp_c": 14.5,
+      "mean_annual_precip_mm": 550,
+      "humidity_pct": 62,
+      "wind_speed_kmh": 13,
+      "seasonal_amplitude_c": 12.0
+    },
+    "Csc": {
+      "mean_annual_temp_c": 11.0,
+      "mean_annual_precip_mm": 750,
+      "humidity_pct": 68,
+      "wind_speed_kmh": 14,
+      "seasonal_amplitude_c": 9.0
+    },
+    "Cwa": {
+      "mean_annual_temp_c": 17.0,
+      "mean_annual_precip_mm": 1350,
+      "humidity_pct": 72,
+      "wind_speed_kmh": 10,
+      "seasonal_amplitude_c": 15.0
+    },
+    "Cwb": {
+      "mean_annual_temp_c": 13.5,
+      "mean_annual_precip_mm": 1050,
+      "humidity_pct": 70,
+      "wind_speed_kmh": 10,
+      "seasonal_amplitude_c": 12.0
+    },
+    "Dfa": {
+      "mean_annual_temp_c": 10.0,
+      "mean_annual_precip_mm": 950,
+      "humidity_pct": 68,
+      "wind_speed_kmh": 12,
+      "seasonal_amplitude_c": 24.0
+    },
+    "Dfb": {
+      "mean_annual_temp_c": 6.0,
+      "mean_annual_precip_mm": 750,
+      "humidity_pct": 70,
+      "wind_speed_kmh": 12,
+      "seasonal_amplitude_c": 25.0
+    },
+    "Dfc": {
+      "mean_annual_temp_c": 1.5,
+      "mean_annual_precip_mm": 650,
+      "humidity_pct": 74,
+      "wind_speed_kmh": 12,
+      "seasonal_amplitude_c": 25.0
+    },
+    "Dfd": {
+      "mean_annual_temp_c": -3.5,
+      "mean_annual_precip_mm": 500,
+      "humidity_pct": 72,
+      "wind_speed_kmh": 11,
+      "seasonal_amplitude_c": 28.0
+    },
+    "Dsa": {
+      "mean_annual_temp_c": 9.5,
+      "mean_annual_precip_mm": 700,
+      "humidity_pct": 55,
+      "wind_speed_kmh": 11,
+      "seasonal_amplitude_c": 22.0
+    },
+    "Dsb": {
+      "mean_annual_temp_c": 5.5,
+      "mean_annual_precip_mm": 650,
+      "humidity_pct": 60,
+      "wind_speed_kmh": 11,
+      "seasonal_amplitude_c": 23.0
+    },
+    "Dsc": {
+      "mean_annual_temp_c": 1.0,
+      "mean_annual_precip_mm": 600,
+      "humidity_pct": 66,
+      "wind_speed_kmh": 11,
+      "seasonal_amplitude_c": 24.0
+    },
+    "Dsd": {
+      "mean_annual_temp_c": -4.0,
+      "mean_annual_precip_mm": 450,
+      "humidity_pct": 68,
+      "wind_speed_kmh": 11,
+      "seasonal_amplitude_c": 26.0
+    },
+    "Dwa": {
+      "mean_annual_temp_c": 8.5,
+      "mean_annual_precip_mm": 900,
+      "humidity_pct": 62,
+      "wind_speed_kmh": 10,
+      "seasonal_amplitude_c": 24.0
+    },
+    "Dwb": {
+      "mean_annual_temp_c": 4.5,
+      "mean_annual_precip_mm": 800,
+      "humidity_pct": 66,
+      "wind_speed_kmh": 10,
+      "seasonal_amplitude_c": 25.0
+    },
+    "Dwc": {
+      "mean_annual_temp_c": 0.5,
+      "mean_annual_precip_mm": 750,
+      "humidity_pct": 70,
+      "wind_speed_kmh": 10,
+      "seasonal_amplitude_c": 26.0
+    },
+    "Dwd": {
+      "mean_annual_temp_c": -4.5,
+      "mean_annual_precip_mm": 550,
+      "humidity_pct": 70,
+      "wind_speed_kmh": 10,
+      "seasonal_amplitude_c": 28.0
+    },
+    "ET": {
+      "mean_annual_temp_c": -2.0,
+      "mean_annual_precip_mm": 350,
+      "humidity_pct": 70,
+      "wind_speed_kmh": 14,
+      "seasonal_amplitude_c": 14.0
+    },
+    "EF": {
+      "mean_annual_temp_c": -15.0,
+      "mean_annual_precip_mm": 150,
+      "humidity_pct": 72,
+      "wind_speed_kmh": 15,
+      "seasonal_amplitude_c": 20.0
+    }
+  }
+}

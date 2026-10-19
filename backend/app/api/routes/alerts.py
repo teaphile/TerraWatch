@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
-from typing import Optional
 
 from app.services.alert_service import get_alert_service
 
@@ -12,8 +11,8 @@ router = APIRouter(prefix="/alerts", tags=["Alerts"])
 
 @router.get("/active")
 async def get_active_alerts(
-    alert_type: Optional[str] = Query(None, description="Filter by type"),
-    severity: Optional[str] = Query(None, description="Filter by severity"),
+    alert_type: str | None = Query(None, description="Filter by type"),
+    severity: str | None = Query(None, description="Filter by severity"),
     limit: int = Query(50, ge=1, le=500),
 ) -> dict:
     """Get currently active alerts.
@@ -36,7 +35,7 @@ async def get_active_alerts(
 @router.get("/history")
 async def get_alert_history(
     limit: int = Query(100, ge=1, le=500),
-    alert_type: Optional[str] = None,
+    alert_type: str | None = None,
 ) -> dict:
     """Get alert history (newest first)."""
     service = get_alert_service()

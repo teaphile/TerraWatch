@@ -1,7 +1,7 @@
 """Geospatial utility functions."""
 from __future__ import annotations
+
 import math
-from typing import Tuple
 
 
 def haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -13,7 +13,7 @@ def haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
-def validate_coordinates(lat: float, lon: float) -> Tuple[bool, str]:
+def validate_coordinates(lat: float, lon: float) -> tuple[bool, str]:
     """Validate latitude and longitude values."""
     if not -90 <= lat <= 90:
         return False, f"Latitude {lat} out of range [-90, 90]"

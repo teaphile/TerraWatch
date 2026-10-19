@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -39,7 +39,7 @@ class LandslideModel:
         distance_to_river_km: float = 5.0,
         land_cover: str = "forest",
         lithology: str = "sedimentary",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Predict landslide susceptibility for a location.
 
         Args:
@@ -240,10 +240,7 @@ class LandslideModel:
         if 25 <= lat <= 38 and 70 <= lon <= 100:
             prob *= 1.2
         # Japanese Alps
-        elif 33 <= lat <= 43 and 129 <= lon <= 146:
-            prob *= 1.15
-        # Andes
-        elif -40 <= lat <= 10 and -80 <= lon <= -65:
+        elif (33 <= lat <= 43 and 129 <= lon <= 146) or (-40 <= lat <= 10 and -80 <= lon <= -65):
             prob *= 1.15
         # European Alps
         elif 43 <= lat <= 48 and 5 <= lon <= 17:
@@ -266,8 +263,8 @@ class LandslideModel:
         return "Extreme"
 
     def _get_contributing_factors(
-        self, scores: Dict[str, float]
-    ) -> List[str]:
+        self, scores: dict[str, float]
+    ) -> list[str]:
         """Get top contributing factors."""
         factor_names = {
             "slope": "steep_slope",
@@ -286,7 +283,7 @@ class LandslideModel:
         return [factor_names[k] for k, v in sorted_factors[:3] if v > 0.3]
 
 
-_model_instance: Optional[LandslideModel] = None
+_model_instance: LandslideModel | None = None
 
 
 def get_landslide_model() -> LandslideModel:

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.services.soil_service import get_soil_service
 from app.services.disaster_service import get_disaster_service
 from app.services.recommendation_service import get_recommendation_service
+from app.services.soil_service import get_soil_service
 
 router = APIRouter(prefix="/recommendations", tags=["Recommendations"])
 
@@ -31,7 +31,7 @@ async def get_agriculture_recommendations(
         )
         return {"status": "success", "data": recs}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/disaster")
@@ -52,7 +52,7 @@ async def get_disaster_recommendations(
         recs = rec_service.get_disaster_recommendations(risk)
         return {"status": "success", "data": recs}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/environmental")
@@ -73,4 +73,4 @@ async def get_environmental_recommendations(
         recs = rec_service.get_environmental_recommendations(soil)
         return {"status": "success", "data": recs}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

@@ -6,11 +6,11 @@ even when ISRIC, Open-Meteo, or all APIs are unreachable.
 
 from __future__ import annotations
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
-from app.services.weather_service import WeatherService
+import pytest
 from app.services.soil_service import SoilService
+from app.services.weather_service import WeatherService
 
 
 @pytest.fixture
